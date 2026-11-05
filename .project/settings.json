@@ -1,7 +1,51 @@
 {
-  "@runtime": {
-    "multiplayer": {
-      "enabled": false
+  "$schema": "../schemas/settings.schema.json",
+  "sources": {
+    "engine": {
+      "tag": "latest"
+    },
+    "engine-res": {
+      "tag": "latest"
+    },
+    "official-res": {
+      "tag": "latest"
     }
+  },
+  "build": {
+    "generate_fs_path": true,
+    "output_dir": "../dist",
+    "asset_dirs": [
+      "../assets",
+      "../scripts"
+    ],
+    "asset_ignores": [
+      "../.cache",
+      "../.build",
+      "../dist",
+      "../.project",
+      "../.emmylua",
+      "../docs", "../50款同类游戏研究报告.md", "../好运游戏厅-PRD.md", "../好运游戏厅-GDD.md",
+      "../engine-docs",
+      "../plugin-docs",
+      "../editor-docs",
+      "../examples",
+      "../schemas",
+      "../templates",
+      "../urhox-libs",
+      "../.claude",
+      "../.codex",
+      "../.cursor",
+      "../.gemini",
+      "../logs",
+      "../tools",
+      "../devtools",
+      "../.cli",
+      "../.claude",
+      "../.codex",
+      "../.cursor",
+      "../.gemini",
+      "../.installer",
+      "../.tmp"
+    ]
   }
 }
