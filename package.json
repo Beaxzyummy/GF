@@ -1,0 +1,13 @@
+{
+  "name": "fortune-arcade",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "好运游戏厅 - 纯单机虚拟游戏厅模拟游戏",
+  "scripts": {
+    "verify": "node scripts/verify-probability.mjs",
+    "verify:quick": "node scripts/verify-probability.mjs --n 100000",
+    "test": "node --test tests/"
+  },
+  "engines": { "node": ">=18.14.1" }
+}

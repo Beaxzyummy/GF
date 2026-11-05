@@ -1,68 +1,28 @@
-# Build artifacts & runtime state
-.build/
+# 依赖与构建产物
+node_modules/
 dist/
-.cli/
-logs/
+build/
+output/
 *.log
-logs/.nfs*
-.sce/logs/
-.sce/build/build_steps/__pycache__/
+logs/
 
-# Temp & swap files
-.tmp/
-*.crswap
-.org.chromium.Chromium.??????
+# Maker 本地状态（含鉴权信息，绝不入库）
+.maker-mcp/config.local.json
+.taptap-maker/
+
+# 系统文件
 .DS_Store
+Thumbs.db
 
-# OSS util
-.ossutil_checkpoint/
-ossutil_output/
-
-# Editor / IDE / agent configs
+# 编辑器
 .vscode/
-.cursor/
-.codex/
-.gemini/
-.claude/
-.emmylua/
-.installer/
-.maker/
+.idea/
 
-# Maker engine assets & agent files (provided by ai-dev-kit, not user source)
-engine-docs/
-examples/
-lua-tools/
-schemas/
-skills/
-templates/
+# 临时文件
+*.tmp
+*.bak
+/uploads/
+
+# >>> TapTap Maker AI dev kit (local only) >>>
+.agents/skills/
 tools/
-urhox-libs/
-AGENTS.md
-CLAUDE.md
-
-# Platform resource aliases
-/.emmylua
-/engine-docs
-/editor-docs
-/plugin-docs
-/examples
-/lua-tools
-/schemas
-/templates
-/tools
-/urhox-libs
-/_uploads
-/_outputs
-/dist
-/.build
-/.project/Build
-/.godot
-/game_material
-/.tmp
-/.cli
-/logs
-/.agent
-/.agents
-/.claude
-/.codex
-/.opencode

@@ -1,0 +1,7 @@
+id,name,price,unlock_type,unlock_value,win_rate,color_primary,color_accent
+T1,晨光,5,default,0,0.3500,#F5F0E6,#C9A227
+T2,雨后,20,total_scratched,15,0.3200,#7A9A8C,#3E5F52
+T3,烫金,80,total_scratched,40,0.3000,#1C1A17,#C9A227
+T4,丝绒,300,total_scratched,100,0.2700,#5C1A22,#8E2B35
+T5,夜光,1200,ads_watched,3,0.2400,#141B33,#4A6FA5
+T6,霜花,5000,login_streak,3,0.2000,#D6E4EF,#9BC4DD

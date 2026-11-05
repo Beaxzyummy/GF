@@ -1,0 +1,9 @@
+index,name,type,value,probability,color
+1,金币小,coin,1000,0.3000,#B87333
+2,金币中,coin,5000,0.1500,#C0C0C0
+3,金币大,coin,20000,0.0500,#FFD700
+4,免费票,ticket,5,0.1500,#4CAF50
+5,钻石,diamond,10,0.1000,#2196F3
+6,再来一次,respin,0,0.1500,#9C27B0
+7,员工碎片,fragment,1,0.0800,#FF9800
+8,大奖,jackpot,200000,0.0200,#F44336

@@ -1,0 +1,15 @@
+key,value,min,max,note
+ticket_recover_sec,30,20,60,每张免费票恢复秒数
+ticket_cap,20,10,30,免费票上限
+energy_recover_sec,300,180,600,每点电恢复秒数
+energy_cap,30,15,50,电上限
+offline_cap_hours,8,4,12,离线收益上限
+ads_daily_total,30,20,40,广告总日上限
+upgrade_cost_ratio,1.55,1.4,1.7,员工升级成本指数
+scratch_brush_radius,40,30,56,刮除笔刷半径px
+scratch_min_dist,3,1,6,最小滑动判定px每帧
+scratch_reveal_threshold,0.78,0.70,0.90,自动揭开阈值
+scratch_reveal_duration,0.4,0.2,0.8,揭开动画秒
+wheel_spin_duration,3.2,2.5,4.5,转盘总时长
+wheel_final_deg_duration,0.6,0.4,1.0,最后3度时长
+wheel_jitter_deg,0.8,0,2,停针微颤

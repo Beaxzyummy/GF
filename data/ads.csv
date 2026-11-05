@@ -1,0 +1,6 @@
+id,name,reward_type,reward_value,daily_cap,priority
+1,补票,ticket,20,8,1
+2,领奖加份,coin,raw,10,2
+3,离线加份,coin,raw,1,3
+4,转盘加电,energy,10,6,4
+5,钻石礼包,diamond,50,5,5

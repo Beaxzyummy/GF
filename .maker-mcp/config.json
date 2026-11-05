@@ -1,0 +1,13 @@
+{
+  "$comment": "Maker MCP 项目绑定模板。运行 npx @taptap/maker init 后此文件会被写入真实 project_id，勿手工伪造。",
+  "project_id": null,
+  "project_name": "好运游戏厅",
+  "target_dir": "/workspace",
+  "game": {
+    "name": "好运游戏厅",
+    "en_name": "Fortune Arcade",
+    "category": "casual",
+    "mode": "offline",
+    "monetization": "iaa_only"
+  }
+}
