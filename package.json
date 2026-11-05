@@ -7,7 +7,9 @@
   "scripts": {
     "verify": "node scripts/verify-probability.mjs",
     "verify:quick": "node scripts/verify-probability.mjs --n 100000",
-    "test": "node --test tests/"
+    "test": "node --test tests/*.test.mjs"
   },
-  "engines": { "node": ">=18.14.1" }
+  "engines": {
+    "node": ">=18.14.1"
+  }
 }
