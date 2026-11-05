@@ -1,0 +1,10 @@
+{
+  "$schema": "../schemas/project.schema.json",
+  "project_id": "fortune-arcade",
+  "name": "好运游戏厅",
+  "author": {
+    "id": "local"
+  },
+  "entry": "main.lua",
+  "version": "0.1.0"
+}
