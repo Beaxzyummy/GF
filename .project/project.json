@@ -5,6 +5,6 @@
   "author": {
     "id": "local"
   },
-  "entry": "main.lua",
+  "entry": "scripts/main.lua",
   "version": "0.1.0"
 }
