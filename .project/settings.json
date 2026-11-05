@@ -24,7 +24,10 @@
       "../dist",
       "../.project",
       "../.emmylua",
-      "../docs", "../50款同类游戏研究报告.md", "../好运游戏厅-PRD.md", "../好运游戏厅-GDD.md",
+      "../docs",
+      "../50款同类游戏研究报告.md",
+      "../好运游戏厅-PRD.md",
+      "../好运游戏厅-GDD.md",
       "../engine-docs",
       "../plugin-docs",
       "../editor-docs",
@@ -47,5 +50,10 @@
       "../.installer",
       "../.tmp"
     ]
+  },
+  "@runtime": {
+    "multiplayer": {
+      "enabled": false
+    }
   }
 }
