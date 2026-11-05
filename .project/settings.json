@@ -2,13 +2,13 @@
   "$schema": "../schemas/settings.schema.json",
   "sources": {
     "engine": {
-      "tag": "latest"
+      "tag": "stable"
     },
     "engine-res": {
-      "tag": "latest"
+      "tag": "stable"
     },
     "official-res": {
-      "tag": "latest"
+      "tag": "stable"
     }
   },
   "build": {
