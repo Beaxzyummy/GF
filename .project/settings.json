@@ -1,0 +1,7 @@
+{
+  "@runtime": {
+    "multiplayer": {
+      "enabled": false
+    }
+  }
+}

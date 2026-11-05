@@ -1,10 +1,17 @@
 {
   "$schema": "../schemas/project.schema.json",
-  "project_id": "fortune-arcade",
+  "project_id": "m_i91j",
   "name": "好运游戏厅",
   "author": {
     "id": "local"
   },
-  "entry": "scripts/main.lua",
-  "version": "0.1.0"
+  "entry": "main.lua",
+  "version": "0.1.0",
+  "taptap_publish": {
+    "app_id": 1032436,
+    "developer_id": 523874,
+    "miniapp_id": "tapmcjzcgbbzl3gwcu",
+    "title": "好运游戏厅",
+    "category": "casual"
+  }
 }
