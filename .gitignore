@@ -24,5 +24,43 @@ Thumbs.db
 /uploads/
 
 # >>> TapTap Maker AI dev kit (local only) >>>
-.agents/skills/
+.DS_Store
+.agents/skills/anim-info/
+.agents/skills/blender/
+.agents/skills/convert-panorama/
+.agents/skills/custom-lobby/
+.agents/skills/import-fbx/
+.agents/skills/import-glb/
+.agents/skills/materials/
+.agents/skills/model-info/
+.agents/skills/nvg-resolution-mode/
+.agents/skills/online-system-notification/
+.agents/skills/run-lua-headless/
+.agents/skills/run-lua-validate/
+.agents/skills/setup-achievements/
+.agents/skills/setup-ads/
+.agents/skills/setup-fsm/
+.agents/skills/skill-creator/
+.agents/skills/sprite-gen/
+.agents/skills/ui-astroon/
+.agents/skills/ui-brawlforge/
+.agents/skills/ui-pixelforge/
+.claude/
+.cli/
+.codex/
+.cursor/
+.emmylua/
+.gemini/
+.installer/
+.maker/
+/.maker-preview/
+AGENTS.md
+CLAUDE.md
+engine-docs/
+examples/
+schemas/
+skills/
+templates/
 tools/
+urhox-libs/
+# <<< TapTap Maker AI dev kit (local only) <<<
