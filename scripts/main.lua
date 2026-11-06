@@ -22,9 +22,9 @@ local TICKETS = {
         {m=0,p=0.7000,v=0},{m=3,p=0.1950,v=130},{m=5,p=0.0780,v=400},{m=7,p=0.0240,v=1800},{m=9,p=0.0030,v=12000} } },
     { id="T4", name="丝绒", price=300, unlock=100, color={142,43,53},   tiers={
         {m=0,p=0.7300,v=0},{m=3,p=0.1700,v=480},{m=5,p=0.0720,v=1500},{m=7,p=0.0255,v=8000},{m=9,p=0.0025,v=60000} } },
-    { id="T5", name="夜光", price=1200,unlock=150, color={74,111,165},  tiers={
+    { id="T5", name="夜光", price=1200,unlock=0, unlockAds=3, color={74,111,165},  tiers={
         {m=0,p=0.7600,v=0},{m=3,p=0.1500,v=2000},{m=5,p=0.0650,v=7000},{m=7,p=0.0230,v=40000},{m=9,p=0.0020,v=300000} } },
-    { id="T6", name="霜花", price=5000,unlock=200, color={155,196,221}, tiers={
+    { id="T6", name="霜花", price=5000,unlock=0, unlockStreak=3, color={155,196,221}, tiers={
         {m=0,p=0.8000,v=0},{m=3,p=0.1200,v=9000},{m=5,p=0.0540,v=30000},{m=7,p=0.0240,v=180000},{m=9,p=0.0020,v=2000000} } },
 }
 
@@ -106,6 +106,24 @@ local ECO = {
     gridCols = 18, gridRows = 18,
     bankruptcyTickets = 20, bankruptcyCoins = 500, bankruptcyDailyCap = 3,
 }
+
+-- ============================================================================
+-- 1.5 广告系统（AD_MODE 编译期常量，规范 1.5.2：严禁远程开关）
+-- A1 补票 8次 / A2 领奖加份 10次 / A3 离线加份 1次 / A4 转盘加电 6次 / A5 钻石礼包 5次
+-- 全局日上限 30 · 最小间隔 30 秒（广告策划案 + src/core/ads.js）
+-- ============================================================================
+
+local AD_MODE = "mock"   -- "mock" = 演示广告；广告变现开通后改为 "live" 接 SDK
+
+local AD_PLACEMENTS = {
+    A1 = { name="补票",     cap=8,  reward="ticket",  value=20 },
+    A2 = { name="领奖加份", cap=10, reward="coin",    value="raw" },
+    A3 = { name="离线加份", cap=1,  reward="coin",    value="raw" },
+    A4 = { name="转盘加电", cap=6,  reward="energy",  value=10 },
+    A5 = { name="钻石礼包", cap=5,  reward="diamond", value=50 },
+}
+local AD_DAILY_TOTAL = 30
+local AD_MIN_INTERVAL = 30
 
 local SYMBOLS = { "✦", "✿", "◆", "●" }
 local FILL_WEIGHTS = { {30},{28},{24},{16} }  -- 下标对应 SYMBOLS
@@ -267,6 +285,20 @@ state_ = defaultState()
 
 local SAVE_FILE = "save.json"
 
+local function todayIndex() return math.floor(os.time() / 86400) end
+
+--- 连续登录天数（T6 解锁条件用）
+function updateLoginStreak()
+    local today = todayIndex()
+    if state_.loginDay == today then return end
+    if state_.loginDay == today - 1 then
+        state_.loginStreak = (state_.loginStreak or 0) + 1
+    else
+        state_.loginStreak = 1
+    end
+    state_.loginDay = today
+end
+
 function saveGame()
     state_.lastSeen = os.time()
     if not cjson then return end
@@ -321,6 +353,109 @@ function checkBankruptcy()
 end
 
 -- ============================================================================
+-- 3.5 广告频控（三层：全局日上限 / 单位上限 / 最小间隔）
+-- ============================================================================
+
+local adCtx_ = nil   -- { placement, rewardFn, remaining, overlay }
+
+function adRollover()
+    local today = todayIndex()
+    if state_.ads.day ~= today then
+        state_.ads = { day=today, total=0, byPlacement={}, lastTs=0 }
+    end
+end
+
+--- 是否可看某广告位
+---@return boolean ok, string reason
+function adCanShow(pid)
+    adRollover()
+    local p = AD_PLACEMENTS[pid]
+    if not p then return false, "unknown" end
+    if state_.ads.total >= AD_DAILY_TOTAL then return false, "daily" end
+    local used = state_.ads.byPlacement[pid] or 0
+    if used >= p.cap then return false, "cap" end
+    if os.time() - (state_.ads.lastTs or 0) < AD_MIN_INTERVAL then return false, "interval" end
+    return true, nil
+end
+
+--- 记录一次广告完成
+function adRecord(pid)
+    adRollover()
+    state_.ads.total = state_.ads.total + 1
+    state_.ads.byPlacement[pid] = (state_.ads.byPlacement[pid] or 0) + 1
+    state_.ads.lastTs = os.time()
+    state_.adsWatchedTotal = (state_.adsWatchedTotal or 0) + 1
+end
+
+--- 发奖
+function adGrant(pid, rawValue)
+    local p = AD_PLACEMENTS[pid]
+    if not p then return "" end
+    if p.reward == "ticket" then
+        state_.tickets = math.min(ECO.ticketCap, state_.tickets + p.value)
+        return "票 +" .. p.value
+    elseif p.reward == "energy" then
+        state_.energy = math.min(ECO.energyCap, state_.energy + p.value)
+        return "电 +" .. p.value
+    elseif p.reward == "diamond" then
+        state_.diamonds = state_.diamonds + p.value
+        return "钻石 +" .. p.value
+    elseif p.reward == "coin" and p.value == "raw" then
+        state_.coins = state_.coins + (rawValue or 0)
+        return "金币 +" .. fmt(rawValue or 0)
+    end
+    return ""
+end
+
+--- 播放广告（mock：5 秒演示广告；live：待变现开通后接 sdk:ShowRewardVideoAd）
+--- rewardFn 在奖励发放后回调（用于刷新界面）
+function ShowAd(pid, rewardFn, rawValue)
+    local ok, reason = adCanShow(pid)
+    if not ok then
+        local msg = reason == "daily" and "今日广告次数已用完" or (reason == "cap" and "该广告位今日已达上限" or "操作太频繁 · 稍后再看")
+        ShowToast(msg)
+        return false
+    end
+    adCtx_ = { placement = pid, rewardFn = rewardFn, rawValue = rawValue, remaining = 5 }
+    adRecord(pid)
+    -- 演示广告全屏覆盖
+    local overlay = UI.Panel {
+        id = "adOverlay",
+        position = "absolute", top = 0, left = 0, right = 0, bottom = 0,
+        backgroundColor = { 8, 8, 12, 252 },
+        justifyContent = "center", alignItems = "center", gap = 14,
+        children = {
+            UI.Label { text = "📺 演示广告", fontSize = 26, fontColor = { 240, 240, 245, 255 } },
+            UI.Label { id = "adCountdown", text = "5", fontSize = 52, fontColor = { 255, 215, 0, 255 } },
+            UI.Label { text = AD_PLACEMENTS[pid].name .. " · " .. AD_MODE:upper() .. " 模式", fontSize = 13, fontColor = { 160, 160, 175, 220 } },
+            UI.Label { text = "正式版此处为真实激励视频", fontSize = 11, fontColor = { 110, 110, 125, 190 } },
+        }
+    }
+    uiRoot_:AddChild(overlay)
+    return true
+end
+
+--- 每帧推进广告倒计时（在 HandleUpdate 开头调用）
+function tickAd(dtMs)
+    if not adCtx_ then return end
+    adCtx_.remaining = adCtx_.remaining - dtMs / 1000
+    local lbl = uiRoot_ and uiRoot_:FindById("adCountdown") --[[@as Label?]]
+    if lbl then lbl:SetText(tostring(math.max(1, math.ceil(adCtx_.remaining)))) end
+    if adCtx_.remaining <= 0 then
+        local msg = adGrant(adCtx_.placement, adCtx_.rawValue)
+        local fn = adCtx_.rewardFn
+        local pid = adCtx_.placement
+        adCtx_ = nil
+        local ov = uiRoot_ and uiRoot_:FindById("adOverlay")
+        if ov then ov:Hide() end
+        if fn then fn() end
+        updateHud()
+        saveGame()
+        ShowToast("🎁 " .. msg)
+    end
+end
+
+-- ============================================================================
 -- 4. 运行时状态
 -- ============================================================================
 
@@ -360,6 +495,7 @@ function Start()
     SubscribeToEvent("TouchEnd", "HandleTouchEnd")
 
     local hadSave = loadGame()
+    updateLoginStreak()
     if hadSave then
         offlineBill_ = settleOffline()
     end
@@ -396,6 +532,14 @@ function ShowOfflinePanel(bill)
                     UI.Label { text = "🌙 你不在的时候", fontSize = 20, fontColor = { 245,240,230,255 } },
                     UI.Label { text = "店里赚了 " .. fmt(bill.coins) .. " 金币", fontSize = 24, fontColor = { 255,215,0,255 } },
                     UI.Label { text = string.format("离线 %d 小时 %d 分 · 产出 %d/秒", math.floor(bill.away/3600), math.floor(bill.away%3600/60), bill.prod), fontSize = 13, fontColor = { 200,185,150,230 } },
+                    UI.Button { text = "📺 看广告 多领一份", width = "70%",
+                        onClick = function(self)
+                            ShowAd("A3", function()
+                                self:SetText("✅ 已多领一份")
+                                self:SetDisabled(true)
+                                updateHud()
+                            end, bill.coins)
+                        end },
                     UI.Button { text = "收下", variant = "primary", width = "70%",
                         onClick = function(self)
                             local panel = uiRoot_:FindById("offlinePanel")
@@ -426,6 +570,7 @@ end
 function HandleUpdate(eventType, eventData)
     local dtMs = eventData["TimeStep"]:GetFloat() * 1000
     local dirty = false
+    tickAd(dtMs)
 
     if state_.tickets < ECO.ticketCap then
         state_.ticketRemainMs = state_.ticketRemainMs + dtMs
@@ -528,6 +673,7 @@ local function scratchAt(lx, ly)
 end
 
 function HandleTouchBegin(eventType, eventData)
+    if adCtx_ then return end
     if state_.screen ~= "scratch" or scratch_.settled then return end
     local lx, ly = toLogical(eventData:GetInt("X")), toLogical(eventData:GetInt("Y"))
     scratch_.pointerDown = true
@@ -536,6 +682,7 @@ function HandleTouchBegin(eventType, eventData)
 end
 
 function HandleTouchMove(eventType, eventData)
+    if adCtx_ then return end
     if not scratch_.pointerDown or state_.screen ~= "scratch" or scratch_.settled then return end
     local lx, ly = toLogical(eventData:GetInt("X")), toLogical(eventData:GetInt("Y"))
     local dx, dy = lx - scratch_.lastX, ly - scratch_.lastY
@@ -678,11 +825,22 @@ function BuildLobby()
     saveGame()
     local ticketBtns = {}
     for _, tk in ipairs(TICKETS) do
-        local unlocked = state_.totalScratched >= tk.unlock
+        local unlocked = state_.totalScratched >= (tk.unlock or 0)
+        local lockHint
+        if not unlocked then
+            lockHint = "🔒" .. tk.unlock .. "张"
+        elseif tk.unlockAds and (state_.adsWatchedTotal or 0) < tk.unlockAds then
+            unlocked = false
+            lockHint = "📺看广告" .. tk.unlockAds .. "次"
+        elseif tk.unlockStreak and (state_.loginStreak or 0) < tk.unlockStreak then
+            unlocked = false
+            lockHint = "📅登录" .. tk.unlockStreak .. "天"
+        end
+        local label = unlocked and (tk.name .. " ¥" .. tk.price) or lockHint
         table.insert(ticketBtns, UI.Button {
-            text = unlocked and (tk.name .. "\n¥" .. tk.price) or ("🔒" .. tk.unlock .. "张"),
-            width = 82, height = 56, fontSize = 13,
-            enabled = unlocked,
+            text = label,
+            width = 100, height = 56, fontSize = 12,
+            disabled = not unlocked,
             onClick = function()
                 StartScratch(tk)
             end,
@@ -724,6 +882,10 @@ function BuildLobby()
                             UI.Label { text = "🎫 彩票柜台", fontSize = 17, fontColor = { 245, 240, 230, 255 } },
                             UI.Panel { gap = 6, flexWrap = "wrap", justifyContent = "center", children = ticketBtns },
                             UI.Label { text = "（累计刮卡解锁更高面额）", fontSize = 10, fontColor = { 150, 135, 105, 190 } },
+                            UI.Button {
+                                id = "a1Btn", text = "📺 没票了？看广告补 20 票（今日 " .. (state_.ads.byPlacement.A1 or 0) .. "/8）",
+                                fontSize = 12, width = "90%",
+                                onClick = function() ShowAd("A1", updateHud) end },
                         }
                     },
                     -- HOT + 转盘
@@ -736,7 +898,7 @@ function BuildLobby()
                                 UI.Label { text = "🔥 HOT 全收", fontSize = 16, fontColor = { 255, 160, 140, 255 } },
                                 UI.Label { text = hotUnlocked and "¥200 · 8%全收16格" or "🔒 刮满30张解锁", fontSize = 11, fontColor = { 220, 190, 180, 220 } },
                                 UI.Button { text = hotUnlocked and "刮 HOT" or "未解锁", fontSize = 13,
-                                    enabled = hotUnlocked, variant = "primary",
+                                    disabled = not hotUnlocked, variant = "primary",
                                     onClick = function() StartHot() end },
                             }
                         },
@@ -955,6 +1117,15 @@ function SettleScratch()
                     UI.Label { text = payout > 0 and ("🎉 + " .. fmt(payout) .. " 币！") or "谢谢惠顾", fontSize = 26,
                         fontColor = payout > 0 and { 255, 215, 0, 255 } or { 180, 170, 150, 255 } },
                     UI.Label { text = detail, fontSize = 14, fontColor = { 200, 185, 150, 230 } },
+                    UI.Button { text = "📺 看广告 多领一份（+" .. fmt(payout) .. "）", width = "70%",
+                        disabled = payout <= 0,
+                        onClick = function(self)
+                            ShowAd("A2", function()
+                                self:SetText("✅ 已多领一份")
+                                self:SetDisabled(true)
+                                updateHud()
+                            end, payout)
+                        end },
                     UI.Button { text = "再来一张", variant = "primary", width = "70%",
                         onClick = function()
                             if scratch_.mode == "lottery" then StartScratch(cur.ticket) else StartHot() end
@@ -1059,6 +1230,16 @@ function BuildWheel()
                             if not wheelAnim_.spinning then StartWheelSpin() end
                         end,
                     },
+                    UI.Button {
+                        id = "a4Btn",
+                        text = "📺 电不足？看广告 +10 电（今日 " .. (state_.ads.byPlacement.A4 or 0) .. "/6）",
+                        fontSize = 12, width = "70%",
+                        onClick = function()
+                            ShowAd("A4", function()
+                                local lbl = uiRoot_ and uiRoot_:FindById("wheelEnergy") --[[@as Label?]]
+                                if lbl then lbl:SetText("⚡" .. state_.energy) end
+                            end)
+                        end },
                 }
             },
         }
@@ -1159,6 +1340,15 @@ function BuildGacha()
                     UI.Button {
                         text = "十连 · 1,600 钻（必出SR+）", width = "70%",
                         onClick = function() DoGacha(true) end },
+                    UI.Button {
+                        id = "a5Btn", text = "📺 钻石不够？看广告 +50 钻（今日 " .. (state_.ads.byPlacement.A5 or 0) .. "/5）",
+                        fontSize = 12, width = "70%",
+                        onClick = function()
+                            ShowAd("A5", function()
+                                local d = uiRoot_ and uiRoot_:FindById("diamondsLabel") --[[@as Label?]]
+                                if d then d:SetText("💎" .. state_.diamonds) end
+                            end)
+                        end },
                 }
             },
         }
@@ -1231,7 +1421,7 @@ function BuildStaff()
                         UI.Label { text = cat.desc, fontSize = 9, fontColor = { 150, 150, 165, 220 } },
                     }},
                     UI.Button { text = deployText, fontSize = 12, width = 60,
-                        enabled = rec.deployed or deployedCount < 3,
+                        disabled = not (rec.deployed or deployedCount < 3),
                         onClick = function(self)
                             rec.deployed = not rec.deployed
                             saveGame()
@@ -1240,7 +1430,7 @@ function BuildStaff()
                     UI.Button {
                         text = cost and ("升级 " .. fmt(cost)) or "满级",
                         fontSize = 12, width = 86,
-                        enabled = cost ~= nil and state_.coins >= cost,
+                        disabled = not (cost ~= nil and state_.coins >= cost),
                         onClick = function()
                             local c2 = staffUpgradeCost(rec)
                             if c2 and state_.coins >= c2 then
