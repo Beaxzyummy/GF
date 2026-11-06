@@ -25,9 +25,6 @@
       "../.project",
       "../.emmylua",
       "../docs",
-      "../50款同类游戏研究报告.md",
-      "../好运游戏厅-PRD.md",
-      "../好运游戏厅-GDD.md",
       "../engine-docs",
       "../plugin-docs",
       "../editor-docs",
@@ -51,14 +48,7 @@
       "../.tmp"
     ]
   },
-<<<<<<< HEAD
-  "@runtime": {
-    "multiplayer": {
-      "enabled": false
-    }
-=======
   "taptap_publish": {
     "screen_orientation": "portrait"
->>>>>>> 9f976d6 (feat: 锁定竖屏（taptap_publish.screen_orientation=portrait）)
   }
 }
