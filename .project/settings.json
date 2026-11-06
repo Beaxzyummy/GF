@@ -54,6 +54,22 @@
   "@runtime": {
     "multiplayer": {
       "enabled": false
+    },
+    "ad": {
+      "status": 0,
+      "url": "https://developer.taptap.cn/forge/523874/app/1032436/operation/ad-monetization",
+      "ad_spaces": [
+        {
+          "id": "1054323",
+          "type": 1
+        },
+        {
+          "id": "1054324",
+          "type": 2
+        }
+      ],
+      "top_on_placements": [],
+      "synced_at": "2026-11-06T02:15:36.042Z"
     }
   }
 }
