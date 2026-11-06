@@ -6,7 +6,7 @@
     "id": "local"
   },
   "entry": "main.lua",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "taptap_publish": {
     "app_id": 1032436,
     "developer_id": 523874,
@@ -19,10 +19,31 @@
     "icon_url": "https://img.tapimg.com/market/images/ef4719159691d7db73760cadfc67eac4.png"
   },
   "metadata": {
-    "updated_at": "2026-11-06T01:01:42.232Z"
+    "updated_at": "2026-11-06T01:27:25.784Z"
   },
   "test_qrcode": {
-    "url": "https://tapcode-sce.spark.xd.com/qrcode/m_i91j_1793926902083.png",
-    "generated_at": "2026-11-06T01:01:42.232Z"
+    "url": "https://tapcode-sce.spark.xd.com/qrcode/m_i91j_1793928445659.png",
+    "generated_at": "2026-11-06T01:27:25.784Z"
+  },
+  "dc_publish_sync": {
+    "synced": false,
+    "dcVersion": "V-20261106",
+    "dcStatus": "INIT",
+    "baseFields": {
+      "title": "好运游戏厅",
+      "description": "",
+      "category": "casual",
+      "trial_note": "",
+      "icon_url": "https://img.tapimg.com/market/images/ef4719159691d7db73760cadfc67eac4.png",
+      "banner_url": "",
+      "square_promo_url": "",
+      "cover_horizontal_url": "",
+      "cover_vertical_url": "",
+      "screenshot_urls": []
+    },
+    "pending": {
+      "icon_url": "https://img.tapimg.com/market/images/ef4719159691d7db73760cadfc67eac4.png"
+    },
+    "baseGameplayDemoVideoId": 0
   }
 }
