@@ -255,8 +255,8 @@ end
 
 local function totalProduction()
     local sum, hasUR = 0, false
-    for _, rec in ipairs(state_.staffs) do
-        if rec.deployed then
+    for _, rec in pairs(state_.owned) do
+        if type(rec) == "table" and rec.deployed then
             sum = sum + staffProduction(rec)
             if rec.id == "ur_daju" then hasUR = true end
         end
