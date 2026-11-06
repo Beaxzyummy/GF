@@ -50,5 +50,10 @@
   },
   "taptap_publish": {
     "screen_orientation": "portrait"
+  },
+  "@runtime": {
+    "multiplayer": {
+      "enabled": false
+    }
   }
 }
