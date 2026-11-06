@@ -12,6 +12,7 @@
     "developer_id": 523874,
     "miniapp_id": "tapmcjzcgbbzl3gwcu",
     "title": "好运游戏厅",
-    "category": "casual"
+    "category": "casual",
+    "screen_orientation": "portrait"
   }
 }
