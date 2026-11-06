@@ -245,12 +245,12 @@ end
 --- 员工产出
 local function staffProduction(rec)
     local base = STAFF_BASE[rec.rarity]
-    return math.floor(base.prod * math.pow(1.12, rec.level - 1))
+    return math.floor(base.prod * ((1.12)^(rec.level - 1)))
 end
 
 local function staffUpgradeCost(rec)
     if rec.level >= 20 then return nil end
-    return math.floor(STAFF_BASE[rec.rarity].upBase * math.pow(ECO.upgradeRatio, rec.level - 1))
+    return math.floor(STAFF_BASE[rec.rarity].upBase * ((ECO.upgradeRatio)^(rec.level - 1)))
 end
 
 local function totalProduction()
@@ -483,6 +483,26 @@ local screenStack_ = {}      -- 简单返回栈：phone 等
 -- ============================================================================
 
 function Start()
+    -- 启动保护：出错时把错误显示出来，避免黑屏闪退无法定位
+    local ok, err = pcall(StartInner)
+    if not ok then
+        print("=== 启动错误: " .. tostring(err) .. " ===")
+        pcall(function()
+            UI.Init({})
+            local root = UI.Panel {
+                width = "100%", height = "100%", backgroundColor = { 60, 10, 10, 255 },
+                justifyContent = "center", alignItems = "center", gap = 12, padding = 20,
+                children = {
+                    UI.Label { text = "启动出错了", fontSize = 20, fontColor = { 255, 120, 120, 255 } },
+                    UI.Label { text = tostring(err):sub(1, 300), fontSize = 12, fontColor = { 255, 200, 200, 230 } },
+                }
+            }
+            UI.SetRoot(root)
+        end)
+    end
+end
+
+function StartInner()
     graphics.windowTitle = "好运游戏厅"
     UI.Init({
         fonts = { { family = "sans", weights = { normal = "Fonts/NotoSansSC.ttf" } } },
@@ -619,7 +639,7 @@ function HandleUpdate(eventType, eventData)
         if wheelAnim_.spinning then
             wheelAnim_.elapsed = wheelAnim_.elapsed + dtMs / 1000
             local t = math.min(1, wheelAnim_.elapsed / WHEEL_SPIN_SEC)
-            local eased = 1 - math.pow(1 - t, 4)
+            local eased = 1 - ((1 - t)^(4))
             wheelAnim_.angle = wheelAnim_.startAngle + (wheelAnim_.targetAngle - wheelAnim_.startAngle) * eased
             if t >= 1 then wheelAnim_.spinning = false; SettleWheel() end
         end
