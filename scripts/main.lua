@@ -125,7 +125,14 @@ local AD_PLACEMENTS = {
 local AD_DAILY_TOTAL = 30
 local AD_MIN_INTERVAL = 30
 
-local SYMBOLS = { "✦", "✿", "◆", "●" }
+local SYMBOLS = { "福", "禄", "寿", "喜" }
+-- 每个符号的专属色，让「找相同」一眼可辨
+local SYMBOL_COLOR = {
+    ["福"] = { 232, 92, 78, 255 },
+    ["禄"] = { 226, 186, 72, 255 },
+    ["寿"] = { 168, 144, 232, 255 },
+    ["喜"] = { 118, 206, 146, 255 },
+}
 local FILL_WEIGHTS = { {30},{28},{24},{16} }  -- 下标对应 SYMBOLS
 
 -- ============================================================================
@@ -279,6 +286,7 @@ function defaultState()
         shards={ UR=0,SSR=0,SR=0,R=0 },
         lastSeen=os.time(),
         ads={ day=0, total=0, byPlacement={}, lastTs=0 },
+        seenTutorial=false,
     }
 end
 
@@ -472,10 +480,12 @@ local bankBill_ = nil
 local scratch_ = {
     mode = "lottery",          -- lottery | hot
     result = nil,
+    cols = 3,
     removed = {}, removed2 = {},
     removedCount = 0, total = ECO.gridCols * ECO.gridRows,
     rect = { x=0, y=0, w=252, h=252 },
     rect2 = nil,               -- HOT 附加位
+    foil = {},                 -- 每个格子的银色涂层 Widget
     pointerDown = false, lastX = 0, lastY = 0, settled = false,
 }
 
@@ -535,6 +545,76 @@ end
 local screenStack_ = {}      -- 简单返回栈：phone 等
 
 -- ============================================================================
+-- 4.5 视觉主题（统一色板 / 组件工厂）
+-- ============================================================================
+
+local C = {
+    bg      = { 20, 15, 10, 255 },
+    card    = { 38, 28, 18, 255 },
+    card2   = { 52, 39, 25, 255 },
+    gold    = { 212, 175, 55, 255 },
+    goldL   = { 246, 226, 158, 255 },
+    goldD   = { 128, 99, 28, 255 },
+    text    = { 242, 236, 222, 255 },
+    dim     = { 166, 146, 112, 235 },
+    line    = { 96, 76, 42, 255 },
+    green   = { 112, 212, 148, 255 },
+    red     = { 228, 84, 70, 255 },
+    blue    = { 120, 180, 255, 255 },
+    silver  = { 198, 204, 214, 255 },
+    silver2 = { 176, 182, 194, 255 },
+}
+
+--- 主按钮（金） / 次按钮（深棕） / 幽灵按钮
+local function goldBtn(text, onClick, o)
+    o = o or {}
+    return UI.Button {
+        id = o.id, text = text, onClick = onClick,
+        width = o.width or "100%", height = o.height or 46,
+        fontSize = o.fontSize or 15,
+        backgroundColor = o.bg or C.gold,
+        textColor = o.fg or { 38, 28, 10, 255 },
+        borderRadius = 10, borderWidth = 0,
+    }
+end
+
+local function darkBtn(text, onClick, o)
+    o = o or {}
+    return UI.Button {
+        text = text, onClick = onClick,
+        width = o.width or "100%", height = o.height or 44,
+        fontSize = o.fontSize or 14,
+        backgroundColor = o.bg or C.card2,
+        textColor = o.fg or C.text,
+        borderRadius = 10, borderWidth = 1, borderColor = { 110, 88, 48, 255 },
+    }
+end
+
+--- 统一顶栏：避开引擎顶部的开发水印（paddingTop 62）
+local function makeHeader(title, rightText, onBack, rightColor)
+    local right
+    if rightText then
+        right = UI.Label { text = rightText, fontSize = 13, fontColor = rightColor or C.dim }
+    else
+        right = UI.Panel { width = 44, height = 1 }
+    end
+    return UI.Panel {
+        width = "100%", paddingTop = 62, paddingBottom = 8,
+        paddingLeft = 14, paddingRight = 14,
+        justifyContent = "space-between", alignItems = "center",
+        children = {
+            UI.Button {
+                text = "‹", width = 44, height = 38, fontSize = 22,
+                backgroundColor = { 44, 34, 22, 255 }, textColor = C.goldL,
+                borderRadius = 10, onClick = onBack or function() BuildLobby() end,
+            },
+            UI.Label { text = title, fontSize = 16, fontColor = C.goldL },
+            right,
+        },
+    }
+end
+
+-- ============================================================================
 -- 5. 生命周期
 -- ============================================================================
 
@@ -571,6 +651,15 @@ function StartInner()
     SubscribeToEvent("TouchBegin", "HandleTouchBegin")
     SubscribeToEvent("TouchMove", "HandleTouchMove")
     SubscribeToEvent("TouchEnd", "HandleTouchEnd")
+
+    -- 全局渲染钩子：每帧 UI 绘制完成后回调（UI.QueueOverlay 会在每帧开头被清空，用不了）
+    UI.SetInspectorRenderHook(function(nvg)
+        if not nvg then return end
+        pcall(function()
+            drawParticles(nvg)
+            if state_.screen == "wheel" then DrawWheel(nvg) end
+        end)
+    end)
 
     local hadSave = loadGame()
     updateLoginStreak()
@@ -693,21 +782,13 @@ function HandleUpdate(eventType, eventData)
     -- 粒子推进
     updateParticles(dtMs / 1000)
 
-    -- overlays
-    if state_.screen == "scratch" then
-        if not scratch_.settled then
-            UI.QueueOverlay(function(nvg) DrawFoil(nvg) end)
-        end
-        UI.QueueOverlay(function(nvg) drawParticles(nvg) end)
-    elseif state_.screen == "wheel" then
-        if wheelAnim_.spinning then
-            wheelAnim_.elapsed = wheelAnim_.elapsed + dtMs / 1000
-            local t = math.min(1, wheelAnim_.elapsed / WHEEL_SPIN_SEC)
-            local eased = 1 - ((1 - t)^(4))
-            wheelAnim_.angle = wheelAnim_.startAngle + (wheelAnim_.targetAngle - wheelAnim_.startAngle) * eased
-            if t >= 1 then wheelAnim_.spinning = false; SettleWheel() end
-        end
-        UI.QueueOverlay(function(nvg) DrawWheel(nvg) end)
+    -- 转盘动画推进（实际绘制交给全局渲染钩子，见 StartInner）
+    if state_.screen == "wheel" and wheelAnim_.spinning then
+        wheelAnim_.elapsed = wheelAnim_.elapsed + dtMs / 1000
+        local t = math.min(1, wheelAnim_.elapsed / WHEEL_SPIN_SEC)
+        local eased = 1 - ((1 - t)^(4))
+        wheelAnim_.angle = wheelAnim_.startAngle + (wheelAnim_.targetAngle - wheelAnim_.startAngle) * eased
+        if t >= 1 then wheelAnim_.spinning = false; SettleWheel() end
     end
 end
 
@@ -719,17 +800,33 @@ local function toLogical(x)
     return x * (UI.GetWidth() / graphics.width)
 end
 
+local function updateScratchProgress()
+    local ratio = scratch_.removedCount / math.max(1, scratch_.total)
+    local pct = math.floor(ratio * 100)
+    if uiRoot_ then
+        local lbl = uiRoot_:FindById("scratchPct") --[[@as Label?]]
+        if lbl then
+            lbl:SetText(string.format("已刮 %d%% · 刮到 %d%% 自动揭晓", pct, math.floor(ECO.revealThreshold * 100)))
+        end
+        local bar = uiRoot_:FindById("scratchBar")
+        if bar then
+            bar:SetWidth(math.floor((scratch_.barW or 240) * math.min(100, pct) / 100))
+        end
+    end
+end
+
 local function scratchRectAt(lx, ly, r, removed, total)
-    local cellW, cellH = r.w / ECO.gridCols, r.h / ECO.gridRows
+    local cols = scratch_.cols or 3
+    local cellW, cellH = r.w / cols, r.h / cols
     local minC = math.max(0, math.floor((lx - ECO.brushRadius - r.x) / cellW))
-    local maxC = math.min(ECO.gridCols - 1, math.floor((lx + ECO.brushRadius - r.x) / cellW))
+    local maxC = math.min(cols - 1, math.floor((lx + ECO.brushRadius - r.x) / cellW))
     local minR = math.max(0, math.floor((ly - ECO.brushRadius - r.y) / cellH))
-    local maxR = math.min(ECO.gridRows - 1, math.floor((ly + ECO.brushRadius - r.y) / cellH))
+    local maxR = math.min(cols - 1, math.floor((ly + ECO.brushRadius - r.y) / cellH))
     local br2 = ECO.brushRadius * ECO.brushRadius
     local changed = false
     for row = minR, maxR do
         for col = minC, maxC do
-            local key = row * ECO.gridCols + col
+            local key = row * cols + col
             if not removed[key] then
                 local cx = r.x + (col + 0.5) * cellW
                 local cy = r.y + (row + 0.5) * cellH
@@ -737,6 +834,8 @@ local function scratchRectAt(lx, ly, r, removed, total)
                 if dx * dx + dy * dy <= br2 then
                     removed[key] = true
                     scratch_.removedCount = scratch_.removedCount + 1
+                    local f = scratch_.foil and scratch_.foil[key + 1]
+                    if f then f:Hide() end
                     changed = true
                 end
             end
@@ -747,11 +846,9 @@ end
 
 local function scratchAt(lx, ly)
     local changed = scratchRectAt(lx, ly, scratch_.rect, scratch_.removed, scratch_.total)
-    if scratch_.rect2 then
-        changed = scratchRectAt(lx, ly, scratch_.rect2, scratch_.removed2, 1) or changed
-    end
     if changed then
-        local ratio = scratch_.removedCount / scratch_.total
+        updateScratchProgress()
+        local ratio = scratch_.removedCount / math.max(1, scratch_.total)
         if ratio >= ECO.revealThreshold then RevealAll() end
     end
 end
@@ -830,14 +927,20 @@ end
 
 function DrawWheel(nvg)
     local cx = UI.GetWidth() / 2
-    local cy = math.floor(UI.GetHeight() * 0.36)
-    local R = math.min(150, UI.GetWidth() * 0.42)
+    local cy = math.floor(UI.GetHeight() * 0.325)
+    local R = math.min(148, UI.GetWidth() * 0.40)
     local angle = wheelAnim_.angle or 0
-    local seg = 360 / #WHEEL
+    local n = #WHEEL
+    local seg = 360 / n
 
+    -- 外圈光晕
     nvgBeginPath(nvg)
-    nvgCircle(nvg, cx, cy, R + 10)
-    nvgFillColor(nvg, nvgRGBA(201, 162, 39, 255))
+    nvgCircle(nvg, cx, cy, R + 16)
+    nvgFillColor(nvg, nvgRGBA(120, 88, 28, 90))
+    nvgFill(nvg)
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, cx, cy, R + 11)
+    nvgFillColor(nvg, nvgRGBA(212, 175, 55, 255))
     nvgFill(nvg)
 
     for i, s in ipairs(WHEEL) do
@@ -847,38 +950,62 @@ function DrawWheel(nvg)
         nvgMoveTo(nvg, cx, cy)
         nvgArc(nvg, cx, cy, R, a0, a1, 1)
         nvgClosePath(nvg)
-        nvgFillColor(nvg, s.color)
+        nvgFillColor(nvg, nvgRGBA(s.color[1], s.color[2], s.color[3], 255))
         nvgFill(nvg)
+        -- 扇区描边
+        nvgBeginPath(nvg)
+        nvgMoveTo(nvg, cx, cy)
+        nvgLineTo(nvg, cx + math.cos(a0) * R, cy + math.sin(a0) * R)
+        nvgStrokeColor(nvg, nvgRGBA(255, 245, 210, 60))
+        nvgStrokeWidth(nvg, 1)
+        nvgStroke(nvg)
+
         local mid = math.rad(angle + (i - 0.5) * seg - 90)
-        local tx = cx + math.cos(mid) * R * 0.62
-        local ty = cy + math.sin(mid) * R * 0.62
+        local tx = cx + math.cos(mid) * R * 0.64
+        local ty = cy + math.sin(mid) * R * 0.64
         nvgSave(nvg)
         nvgTranslate(nvg, tx, ty)
         nvgRotate(nvg, mid + math.pi / 2)
         nvgFontFace(nvg, "sans")
-        nvgFontSize(nvg, 15)
-        nvgFillColor(nvg, nvgRGBA(255, 255, 255, 240))
+        nvgFontSize(nvg, 14)
+        nvgFillColor(nvg, nvgRGBA(255, 255, 255, 245))
         nvgTextAlign(nvg, 129)
         nvgText(nvg, 0, 0, s.short)
         nvgRestore(nvg)
     end
 
+    -- 内圈
     nvgBeginPath(nvg)
-    nvgCircle(nvg, cx, cy, 26)
+    nvgCircle(nvg, cx, cy, R * 0.32)
+    nvgStrokeColor(nvg, nvgRGBA(255, 240, 200, 70))
+    nvgStrokeWidth(nvg, 1)
+    nvgStroke(nvg)
+
+    -- 轴心
+    nvgBeginPath(nvg)
+    nvgCircle(nvg, cx, cy, 34)
     nvgFillColor(nvg, nvgRGBA(26, 20, 14, 255))
     nvgFill(nvg)
     nvgBeginPath(nvg)
-    nvgCircle(nvg, cx, cy, 22)
+    nvgCircle(nvg, cx, cy, 30)
     nvgFillColor(nvg, nvgRGBA(212, 175, 55, 255))
     nvgFill(nvg)
+    nvgFontFace(nvg, "sans")
+    nvgFontSize(nvg, 15)
+    nvgFillColor(nvg, nvgRGBA(50, 36, 12, 255))
+    nvgTextAlign(nvg, 2 + 16)
+    nvgText(nvg, cx, cy + 5, "转")
+
+    -- 顶部指针
     nvgBeginPath(nvg)
-    nvgMoveTo(nvg, cx - 12, cy - R - 2)
-    nvgLineTo(nvg, cx + 12, cy - R - 2)
-    nvgLineTo(nvg, cx, cy - R + 22)
+    nvgMoveTo(nvg, cx - 14, cy - R - 4)
+    nvgLineTo(nvg, cx + 14, cy - R - 4)
+    nvgLineTo(nvg, cx, cy - R + 26)
     nvgClosePath(nvg)
     nvgFillColor(nvg, nvgRGBA(255, 235, 160, 255))
     nvgFill(nvg)
 end
+
 
 -- ============================================================================
 -- 9. 大厅
@@ -886,8 +1013,12 @@ end
 
 local function updateCurrencyBar()
     if not uiRoot_ then return end
-    local ids = { coinsLabel = "金币 " .. fmt(state_.coins), ticketsLabel = "票 " .. state_.tickets,
-                  energyLabel = "⚡" .. state_.energy, diamondsLabel = "💎" .. state_.diamonds }
+    local ids = {
+        coinsLabel = "金币 " .. fmt(state_.coins),
+        ticketsLabel = "票 " .. state_.tickets .. " · 电 " .. state_.energy,
+        energyLabel = "电 " .. state_.energy,
+        diamondsLabel = "钻 " .. state_.diamonds,
+    }
     for id, text in pairs(ids) do
         local l = uiRoot_:FindById(id) --[[@as Label?]]
         if l then l:SetText(text) end
@@ -898,127 +1029,179 @@ function updateHud()
     updateCurrencyBar()
     if not uiRoot_ then return end
     local stat = uiRoot_:FindById("statLabel") --[[@as Label?]]
-    if stat then stat:SetText("今日刮了 " .. state_.totalScratched .. " 张 · 累计中奖 " .. fmt(state_.totalWon) .. " 币 · 产出 " .. totalProduction() .. "/秒") end
-    local buy = uiRoot_:FindById("buyBtn") --[[@as Button?]]
-    if buy then buy:SetText("刮一张（剩 " .. state_.tickets .. " 张）") end
+    if stat then stat:SetText("今日已刮 " .. state_.totalScratched .. " 张 · 累计中奖 " .. fmt(state_.totalWon)
+        .. " 金币 · 员工产出 " .. totalProduction() .. "/秒") end
+    local a1 = uiRoot_:FindById("a1Btn") --[[@as Button?]]
+    if a1 and state_.ads then
+        a1:SetText("没票了？看广告 +20 票（今日 " .. (state_.ads.byPlacement.A1 or 0) .. "/8）")
+    end
 end
 
 --- 刮卡柜台（选票）
 function BuildLobby()
     state_.screen = "lobby"
     saveGame()
+    local topPad = math.floor(UI.GetHeight() * 0.105)
+
     local ticketBtns = {}
     for _, tk in ipairs(TICKETS) do
-        local unlocked = state_.totalScratched >= (tk.unlock or 0)
-        local lockHint
-        if not unlocked then
-            lockHint = "🔒" .. tk.unlock .. "张"
+        local unlocked, lockHint = true, nil
+        if state_.totalScratched < (tk.unlock or 0) then
+            unlocked = false; lockHint = "刮满 " .. tk.unlock .. " 张"
         elseif tk.unlockAds and (state_.adsWatchedTotal or 0) < tk.unlockAds then
-            unlocked = false
-            lockHint = "📺看广告" .. tk.unlockAds .. "次"
+            unlocked = false; lockHint = "看广告 " .. tk.unlockAds .. " 次"
         elseif tk.unlockStreak and (state_.loginStreak or 0) < tk.unlockStreak then
-            unlocked = false
-            lockHint = "📅登录" .. tk.unlockStreak .. "天"
+            unlocked = false; lockHint = "登录 " .. tk.unlockStreak .. " 天"
         end
-        local label = unlocked and (tk.name .. " ¥" .. tk.price) or lockHint
         table.insert(ticketBtns, UI.Button {
-            text = label,
-            width = 100, height = 56, fontSize = 12,
+            text = unlocked and (tk.name .. "   ¥" .. tk.price) or ("未解锁 · " .. lockHint),
+            width = "48%", height = 52, fontSize = 13,
+            backgroundColor = unlocked and { 54, 41, 26, 255 } or { 30, 25, 20, 255 },
+            textColor = unlocked and { 240, 220, 160, 255 } or { 122, 110, 90, 255 },
+            borderRadius = 10, borderWidth = 1,
+            borderColor = unlocked and { 138, 110, 54, 255 } or { 58, 48, 36, 255 },
             disabled = not unlocked,
-            onClick = function()
-                StartScratch(tk)
-            end,
+            onClick = function() StartScratch(tk) end,
         })
     end
+
     local hotUnlocked = state_.totalScratched >= 30
 
     uiRoot_ = UI.Panel {
-        width = "100%", height = "100%",
-        backgroundColor = { 26, 20, 14, 255 },
+        width = "100%", height = "100%", backgroundColor = C.bg,
         justifyContent = "space-between",
         children = {
             -- 顶栏
             UI.Panel {
-                width = "100%", padding = 12, paddingTop = 36,
-                justifyContent = "space-between", alignItems = "center",
+                width = "100%", paddingTop = topPad, paddingBottom = 10,
+                paddingLeft = 16, paddingRight = 16,
+                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
                 children = {
-                    UI.Label { text = "🏛 好运游戏厅", fontSize = 19, fontColor = { 212, 175, 55, 255 } },
-                    UI.Panel { gap = 10, alignItems = "center", children = {
-                        UI.Label { id = "coinsLabel", text = "金币 " .. fmt(state_.coins), fontSize = 14, fontColor = { 255, 215, 0, 255 } },
-                        UI.Label { id = "ticketsLabel", text = "票 " .. state_.tickets, fontSize = 14, fontColor = { 120, 220, 160, 255 } },
-                        UI.Label { id = "diamondsLabel", text = "💎" .. state_.diamonds, fontSize = 14, fontColor = { 150, 200, 255, 255 } },
-                        UI.Label { id = "energyLabel", text = "⚡" .. state_.energy, fontSize = 14, fontColor = { 120, 180, 255, 255 } },
+                    UI.Panel { gap = 3, children = {
+                        UI.Label { text = "好运游戏厅", fontSize = 21, fontColor = C.goldL },
+                        UI.Label { text = "刮一张 · 试试今天的手气", fontSize = 11, fontColor = C.dim },
                     }},
-                }
+                    UI.Panel { alignItems = "flex-end", gap = 4, children = {
+                        UI.Label { id = "coinsLabel", text = "金币 " .. fmt(state_.coins), fontSize = 16, fontColor = C.gold },
+                        UI.Label { id = "ticketsLabel", text = "票 " .. state_.tickets .. " · 电 " .. state_.energy, fontSize = 11, fontColor = C.green },
+                    }},
+                },
             },
-            -- 中部
+            -- 主体
             UI.Panel {
-                width = "100%", justifyContent = "center", alignItems = "center", gap = 10,
+                width = "100%", paddingLeft = 16, paddingRight = 16, gap = 10,
                 children = {
-                    UI.Label { id = "ticketTimer", text = "", fontSize = 12, fontColor = { 150, 200, 160, 220 } },
-                    -- 刮刮乐柜台
+                    UI.Label { id = "ticketTimer", text = "", fontSize = 11, fontColor = C.dim },
                     UI.Panel {
-                        width = "90%", maxWidth = 380, padding = 16, gap = 10,
-                        backgroundColor = { 44, 34, 22, 245 },
-                        borderRadius = 16, borderWidth = 2, borderColor = { 201, 162, 39, 160 },
-                        alignItems = "center",
+                        width = "100%", padding = 12, gap = 9,
+                        backgroundColor = C.card, borderRadius = 14,
+                        borderWidth = 1, borderColor = { 96, 74, 38, 255 },
                         children = {
-                            UI.Label { text = "🎫 彩票柜台", fontSize = 17, fontColor = { 245, 240, 230, 255 } },
-                            UI.Panel { gap = 6, flexWrap = "wrap", justifyContent = "center", children = ticketBtns },
-                            UI.Label { text = "（累计刮卡解锁更高面额）", fontSize = 10, fontColor = { 150, 135, 105, 190 } },
-                            UI.Button {
-                                id = "a1Btn", text = "📺 没票了？看广告补 20 票（今日 " .. (state_.ads.byPlacement.A1 or 0) .. "/8）",
-                                fontSize = 12, width = "90%",
-                                onClick = function() ShowAd("A1", updateHud) end },
-                        }
+                            UI.Panel { width = "100%", flexDirection = "row",
+                                justifyContent = "space-between", alignItems = "center",
+                                children = {
+                                    UI.Label { text = "彩票柜台", fontSize = 14, fontColor = C.text },
+                                    UI.Label { text = "3 个相同符号即中奖", fontSize = 10, fontColor = C.dim },
+                                } },
+                            UI.Panel { width = "100%", flexDirection = "row", flexWrap = "wrap",
+                                justifyContent = "space-between", gap = 8, children = ticketBtns },
+                            UI.Button { id = "a1Btn", text = "没票了？看广告 +20 票（今日 0/8）",
+                                width = "100%", height = 38, fontSize = 12,
+                                backgroundColor = { 44, 60, 44, 255 }, textColor = { 172, 228, 180, 255 },
+                                borderRadius = 9, onClick = function() ShowAd("A1", updateHud) end },
+                        },
                     },
-                    -- HOT + 转盘
-                    UI.Panel { gap = 10, children = {
-                        UI.Panel {
-                            width = 170, padding = 14, gap = 6, alignItems = "center",
-                            backgroundColor = { 60, 26, 18, 245 }, borderRadius = 14,
-                            borderWidth = 2, borderColor = { 244, 67, 54, 170 },
-                            children = {
-                                UI.Label { text = "🔥 HOT 全收", fontSize = 16, fontColor = { 255, 160, 140, 255 } },
-                                UI.Label { text = hotUnlocked and "¥200 · 8%全收16格" or "🔒 刮满30张解锁", fontSize = 11, fontColor = { 220, 190, 180, 220 } },
-                                UI.Button { text = hotUnlocked and "刮 HOT" or "未解锁", fontSize = 13,
-                                    disabled = not hotUnlocked, variant = "primary",
-                                    onClick = function() StartHot() end },
-                            }
+                    -- HOT 全收
+                    UI.Panel { width = "100%", padding = 14,
+                        flexDirection = "row", justifyContent = "space-between", alignItems = "center",
+                        backgroundColor = { 52, 26, 20, 255 }, borderRadius = 14,
+                        borderWidth = 1, borderColor = { 150, 56, 44, 255 },
+                        children = {
+                            UI.Panel { gap = 4, children = {
+                                UI.Label { text = "HOT 全收 · ¥200", fontSize = 15, fontColor = { 255, 152, 134, 255 } },
+                                UI.Label { text = hotUnlocked and "刮出 HOT，16 格奖金全收" or "累计刮满 30 张解锁", fontSize = 11, fontColor = { 214, 178, 168, 225 } },
+                            }},
+                            UI.Button { text = hotUnlocked and "开刮" or "未解锁",
+                                width = 84, height = 40, fontSize = 13,
+                                backgroundColor = hotUnlocked and { 190, 62, 50, 255 } or { 58, 44, 38, 255 },
+                                textColor = { 255, 240, 230, 255 }, borderRadius = 9,
+                                disabled = not hotUnlocked, onClick = function() StartHot() end },
                         },
-                        UI.Panel {
-                            width = 170, padding = 14, gap = 6, alignItems = "center",
-                            backgroundColor = { 34, 30, 46, 245 }, borderRadius = 14,
-                            borderWidth = 2, borderColor = { 156, 39, 176, 170 },
-                            children = {
-                                UI.Label { text = "🎡 幸运转盘", fontSize = 16, fontColor = { 225, 180, 255, 255 } },
-                                UI.Label { id = "energyTimer", text = "", fontSize = 11, fontColor = { 190, 170, 210, 220 } },
-                                UI.Button { text = "去转盘", fontSize = 13, variant = "primary",
-                                    onClick = function() BuildWheel() end },
-                            }
+                    },
+                    -- 幸运转盘
+                    UI.Panel { width = "100%", padding = 14,
+                        flexDirection = "row", justifyContent = "space-between", alignItems = "center",
+                        backgroundColor = { 40, 34, 54, 255 }, borderRadius = 14,
+                        borderWidth = 1, borderColor = { 108, 78, 148, 255 },
+                        children = {
+                            UI.Panel { gap = 4, children = {
+                                UI.Label { text = "幸运转盘", fontSize = 15, fontColor = { 226, 192, 255, 255 } },
+                                UI.Label { id = "energyTimer", text = "", fontSize = 11, fontColor = { 190, 175, 215, 225 } },
+                            }},
+                            UI.Button { text = "去转", width = 84, height = 40, fontSize = 13,
+                                backgroundColor = { 108, 72, 160, 255 }, textColor = { 250, 242, 255, 255 },
+                                borderRadius = 9, onClick = function() BuildWheel() end },
                         },
-                    }},
-                    UI.Label { id = "statLabel", text = "今日刮了 " .. state_.totalScratched .. " 张 · 产出 " .. totalProduction() .. "/秒", fontSize = 12, fontColor = { 170, 150, 110, 200 } },
-                }
+                    },
+                    UI.Label { id = "statLabel", text = "", fontSize = 11, fontColor = { 140, 122, 94, 225 } },
+                },
             },
-            -- 底栏 + 手机
+            -- 底栏
             UI.Panel {
-                width = "100%", padding = 12, paddingBottom = 26,
-                justifyContent = "space-between", alignItems = "center",
+                width = "100%", paddingLeft = 16, paddingRight = 16, paddingTop = 8, paddingBottom = 28,
+                flexDirection = "row", justifyContent = "space-between", alignItems = "center", gap = 10,
                 children = {
-                    UI.Label { text = "v0.4 完整闭环", fontSize = 10, fontColor = { 120, 105, 80, 180 } },
-                    UI.Button {
-                        text = "📱 手机", fontSize = 16,
-                        onClick = function() BuildPhone() end,
-                    },
-                    UI.Label { id = "toast", text = "", fontSize = 11, fontColor = { 255, 220, 130, 220 } },
-                }
+                    UI.Button { text = "手机 · 抽卡 / 员工", width = "58%", height = 46, fontSize = 14,
+                        backgroundColor = { 44, 52, 68, 255 }, textColor = { 200, 220, 255, 255 },
+                        borderRadius = 10, onClick = function() BuildPhone() end },
+                    UI.Button { text = "玩法", width = "34%", height = 46, fontSize = 14,
+                        backgroundColor = C.card2, textColor = C.text, borderRadius = 10,
+                        borderWidth = 1, borderColor = { 110, 88, 48, 255 },
+                        onClick = function() ShowTutorial() end },
+                },
             },
-        }
+            UI.Panel { position = "absolute", bottom = 6, left = 0, right = 0,
+                alignItems = "center", pointerEvents = "none",
+                children = { UI.Label { id = "toast", text = "", fontSize = 11, fontColor = { 255, 220, 130, 235 } } } },
+        },
     }
     UI.SetRoot(uiRoot_)
     updateHud()
+    if not state_.seenTutorial then ShowTutorial() end
 end
+
+--- 新手引导 / 玩法说明
+function ShowTutorial()
+    if not uiRoot_ or uiRoot_:FindById("tutOverlay") then return end
+    local ov = UI.Panel {
+        id = "tutOverlay",
+        position = "absolute", top = 0, left = 0, right = 0, bottom = 0,
+        backgroundColor = { 0, 0, 0, 215 },
+        justifyContent = "center", alignItems = "center", padding = 22,
+        children = {
+            UI.Panel { width = "100%", maxWidth = 360, padding = 22, gap = 12, alignItems = "stretch",
+                backgroundColor = { 40, 30, 19, 255 }, borderRadius = 18,
+                borderWidth = 2, borderColor = C.gold,
+                children = {
+                    UI.Label { text = "怎么玩", fontSize = 22, fontColor = C.goldL, textAlign = "center" },
+                    UI.Label { text = "1. 在大厅选一张彩票（5 金币起）", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "2. 手指刮开涂层，刮到 78% 自动开奖", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "3. 出现 3 个相同符号就中奖，奖金直接到账", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "4. 票不够：等 30 秒一张，或看广告 +20 张", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "5. 手机里抽员工上阵，挂机也有金币产出", fontSize = 13, fontColor = C.text },
+                    goldBtn("知道了，开始刮卡", function()
+                        state_.seenTutorial = true
+                        saveGame()
+                        local o = uiRoot_ and uiRoot_:FindById("tutOverlay")
+                        if o then o:Hide() end
+                    end),
+                },
+            },
+        },
+    }
+    uiRoot_:AddChild(ov)
+end
+
 
 -- ============================================================================
 -- 10. 刮卡（福彩 + HOT 通用）
@@ -1068,82 +1251,154 @@ end
 function buildScratchScreen()
     state_.screen = "scratch"
     local cur = scratch_.result
-    local title, hint
-    local cellWidgets = {}
-    local areaW, areaH
+    local W, H = UI.GetWidth(), UI.GetHeight()
+    local isLottery = (scratch_.mode == "lottery")
+    local cols = isLottery and 3 or 4
+    local topPad = math.floor(H * 0.105)
 
-    if scratch_.mode == "lottery" then
-        areaW, areaH = 252, 252
-        layoutFoil(areaW, areaH)
-        title = "有效符号 " .. cur.winning .. " · " .. cur.ticket.name .. " ¥" .. cur.ticket.price
-        hint = "刮到 78% 自动揭晓"
-        local r = scratch_.rect
-        for i = 1, 9 do
-            local row = math.floor((i - 1) / 3)
-            local col = (i - 1) % 3
-            local isWin = cur.cells[i] == cur.winning
-            table.insert(cellWidgets, UI.Panel {
-                width = 76, height = 76, position = "absolute",
-                left = r.x + 6 + col * 82, top = r.y + 6 + row * 82,
-                borderRadius = 8,
-                backgroundColor = isWin and { 70, 55, 20, 255 } or { 52, 44, 32, 255 },
-                justifyContent = "center", alignItems = "center", pointerEvents = "none",
-                children = { UI.Label { text = cur.cells[i], fontSize = 34,
-                    fontColor = isWin and { 255, 215, 0, 255 } or { 200, 188, 165, 255 } } },
-            })
+    local maxGridW = isLottery and math.min(W * 0.64, 288) or math.min(W * 0.76, 330)
+    local gap = 6
+    local cell = math.floor((maxGridW - gap * (cols - 1)) / cols)
+    local gridW = cell * cols + gap * (cols - 1)
+    local gridH = gridW
+    local cardW = gridW + 32
+    local cardH = gridH + 128
+    local cardX = math.floor((W - cardW) / 2)
+    local cardY = math.floor(H * 0.185)
+    local gx = cardX + 16
+    local gy = cardY + 104
+
+    scratch_.cols = cols
+    scratch_.barW = gridW
+    scratch_.rect = { x = gx, y = gy, w = gridW, h = gridH }
+    scratch_.rect2 = nil
+    scratch_.total = cols * cols
+    scratch_.removed = {}
+    scratch_.removed2 = {}
+    scratch_.removedCount = 0
+    scratch_.foil = {}
+
+    local winColor = isLottery and (SYMBOL_COLOR[cur.winning] or C.goldL) or C.gold
+
+    local cellWidgets, foilWidgets = {}, {}
+    for i = 1, cols * cols do
+        local row = math.floor((i - 1) / cols)
+        local col = (i - 1) % cols
+        local x = gx + col * (cell + gap)
+        local y = gy + row * (cell + gap)
+        local text, color, isWin
+        if isLottery then
+            text = cur.cells[i]
+            isWin = (text == cur.winning)
+            color = SYMBOL_COLOR[text] or C.text
+        else
+            text = tostring(cur.cells[i])
+            isWin = cur.dollar[i] == true
+            color = isWin and C.gold or { 214, 202, 180, 255 }
         end
-    else
-        areaW, areaH = 232, 232
-        layoutFoil(areaW, areaH)
-        title = "🔥 HOT 全收 · ¥200"
-        hint = "刮出 HOT → 16 格全收 · $$ 格单独给钱"
-        local r = scratch_.rect
-        local cw = (areaW - 18) / 4
-        for i = 1, 16 do
-            local row = math.floor((i - 1) / 4)
-            local col = (i - 1) % 4
-            local isDollar = cur.dollar[i]
-            table.insert(cellWidgets, UI.Panel {
-                width = cw, height = cw, position = "absolute",
-                left = r.x + 6 + col * (cw + 2), top = r.y + 6 + row * (cw + 2),
-                borderRadius = 6,
-                backgroundColor = isDollar and { 80, 60, 15, 255 } or { 52, 44, 32, 255 },
-                justifyContent = "center", alignItems = "center", pointerEvents = "none",
-                children = {
-                    UI.Label { text = isDollar and ("$$ " .. cur.cells[i]) or tostring(cur.cells[i]), fontSize = isDollar and 15 or 18,
-                        fontColor = isDollar and { 255, 215, 0, 255 } or { 200, 188, 165, 255 } },
+
+        table.insert(cellWidgets, UI.Panel {
+            position = "absolute", left = x, top = y, width = cell, height = cell,
+            backgroundColor = isWin and { 62, 46, 18, 255 } or { 30, 24, 16, 255 },
+            borderRadius = 8, borderWidth = 1,
+            borderColor = isWin and { 140, 110, 44, 255 } or { 74, 60, 36, 255 },
+            justifyContent = "center", alignItems = "center", pointerEvents = "none",
+            children = {
+                UI.Label {
+                    text = text,
+                    fontSize = isLottery and math.floor(cell * 0.46) or math.floor(cell * 0.28),
+                    fontColor = color,
                 },
-            })
+            },
+        })
+        table.insert(foilWidgets, UI.Panel {
+            position = "absolute", left = x, top = y, width = cell, height = cell,
+            backgroundColor = (row + col) % 2 == 0 and C.silver or C.silver2,
+            borderRadius = 8, justifyContent = "center", alignItems = "center",
+            pointerEvents = "none",
+            children = { UI.Label { text = "刮", fontSize = math.floor(cell * 0.2), fontColor = { 118, 124, 136, 255 } } },
+        })
+        scratch_.foil[i] = foilWidgets[#foilWidgets]
+    end
+
+    local rewardRow
+    if isLottery then
+        local parts = {}
+        for _, t in ipairs(cur.ticket.tiers) do
+            if t.m > 0 then table.insert(parts, t.m .. "个 = ¥" .. fmt(t.v)) end
         end
+        rewardRow = table.concat(parts, "   ")
+    else
+        rewardRow = "HOT = 16 格全收   ·   $$ 格 = 单独奖金"
     end
 
     uiRoot_ = UI.Panel {
-        width = "100%", height = "100%",
-        backgroundColor = { 26, 20, 14, 255 },
+        width = "100%", height = "100%", backgroundColor = C.bg,
         children = {
             UI.Panel {
-                width = "100%", padding = 12, paddingTop = 36,
-                justifyContent = "space-between", alignItems = "center",
+                width = "100%", paddingTop = topPad, paddingBottom = 6,
+                paddingLeft = 14, paddingRight = 14,
+                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
                 children = {
-                    UI.Button { text = "←", onClick = function() BuildLobby() end },
-                    UI.Label { text = title, fontSize = 16, fontColor = { 212, 175, 55, 255 } },
-                    UI.Label { text = "票 " .. state_.tickets, fontSize = 13, fontColor = { 120, 220, 160, 255 } },
-                }
+                    UI.Button { text = "‹", width = 42, height = 38, fontSize = 22,
+                        backgroundColor = { 44, 34, 22, 255 }, textColor = C.goldL, borderRadius = 10,
+                        onClick = function() BuildLobby() end },
+                    UI.Label { text = isLottery and (cur.ticket.name .. " · ¥" .. cur.ticket.price) or "HOT 全收 · ¥200",
+                        fontSize = 16, fontColor = C.goldL },
+                    UI.Label { text = "票 " .. state_.tickets, fontSize = 12, fontColor = C.green },
+                },
             },
+            -- 卡片底
             UI.Panel {
-                width = "100%", height = "100%", pointerEvents = "none",
-                children = cellWidgets,
+                position = "absolute", left = cardX, top = cardY, width = cardW, height = cardH,
+                backgroundColor = { 44, 33, 20, 255 }, borderRadius = 16,
+                borderWidth = 2, borderColor = C.goldD, pointerEvents = "none",
             },
+            -- 卡头：有效符号
             UI.Panel {
-                position = "absolute", bottom = 36, left = 0, right = 0,
-                justifyContent = "center",
+                position = "absolute", left = cardX + 16, top = cardY + 14,
+                width = cardW - 32, height = 74,
+                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
+                pointerEvents = "none",
                 children = {
-                    UI.Label { text = hint, fontSize = 12, fontColor = { 160, 140, 105, 200 }, position = "absolute", bottom = 52, left = 0, right = 0, textAlign = "center" },
-                    UI.Button { text = "懒人模式 · 直接揭晓", width = "50%", variant = "secondary",
+                    UI.Panel { gap = 3, children = {
+                        UI.Label { text = "本张有效符号", fontSize = 11, fontColor = C.dim },
+                        UI.Label { text = isLottery and ("找出 3 个「" .. cur.winning .. "」") or "刮出 HOT，16 格全收",
+                            fontSize = 15, fontColor = C.text },
+                    }},
+                    UI.Panel { width = 58, height = 58, borderRadius = 29,
+                        backgroundColor = { 28, 21, 13, 255 }, borderWidth = 2,
+                        borderColor = { winColor[1], winColor[2], winColor[3], 220 },
+                        justifyContent = "center", alignItems = "center",
+                        children = { UI.Label { text = isLottery and cur.winning or "¥",
+                            fontSize = 30, fontColor = winColor } } },
+                },
+            },
+            UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
+                pointerEvents = "none", children = cellWidgets },
+            UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
+                pointerEvents = "none", children = foilWidgets },
+            -- 进度与奖级
+            UI.Panel {
+                position = "absolute", left = cardX + 16, top = cardY + cardH + 12, width = cardW - 32, gap = 8,
+                alignItems = "center", pointerEvents = "none",
+                children = {
+                    UI.Label { id = "scratchPct", text = "刮开 0% · 刮到 78% 自动揭晓", fontSize = 11, fontColor = C.dim },
+                    UI.Panel { width = "100%", height = 6, backgroundColor = { 38, 30, 20, 255 }, borderRadius = 3,
+                        children = { UI.Panel { id = "scratchBar", width = "0%", height = 6,
+                            backgroundColor = C.gold, borderRadius = 3 } } },
+                    UI.Label { text = rewardRow, fontSize = 10, fontColor = { 150, 132, 100, 235 }, textAlign = "center" },
+                },
+            },
+            UI.Panel { position = "absolute", bottom = 34, left = 16, right = 16,
+                children = {
+                    UI.Button { text = "懒得刮 · 直接揭晓", width = "100%", height = 46, fontSize = 14,
+                        backgroundColor = { 46, 37, 24, 255 }, textColor = C.goldL, borderRadius = 10,
+                        borderWidth = 1, borderColor = { 120, 96, 50, 255 },
                         onClick = function() RevealAll() end },
-                }
+                },
             },
-        }
+        },
     }
     UI.SetRoot(uiRoot_)
 end
@@ -1151,11 +1406,14 @@ end
 function RevealAll()
     if scratch_.settled or state_.screen ~= "scratch" then return end
     scratch_.settled = true
-    for k = 0, ECO.gridCols * ECO.gridRows - 1 do
-        scratch_.removed[k] = true
-        scratch_.removed2[k] = true
+    local n = (scratch_.cols or 3) * (scratch_.cols or 3)
+    for i = 1, n do
+        scratch_.removed[i - 1] = true
+        local f = scratch_.foil and scratch_.foil[i]
+        if f then f:Hide() end
     end
     scratch_.removedCount = scratch_.total
+    updateScratchProgress()
     SettleScratch()
 end
 
@@ -1166,17 +1424,21 @@ function SettleScratch()
 
     if scratch_.mode == "lottery" then
         payout = cur.payout
-        detail = "匹配 " .. cur.matchCount .. " 个 " .. cur.winning
+        if payout > 0 then
+            detail = "刮出 " .. cur.matchCount .. " 个「" .. cur.winning .. "」"
+        else
+            detail = "只刮到 " .. cur.matchCount .. " 个「" .. cur.winning .. "」，差一点"
+        end
         state_.totalScratched = state_.totalScratched + 1
     else
         if cur.isHot then
             for _, v in ipairs(cur.cells) do payout = payout + v end
-            detail = "🔥 HOT！16 格全收"
+            detail = "HOT 出现 · 16 格奖金全收"
         else
             for i, v in ipairs(cur.cells) do
                 if cur.dollar[i] then payout = payout + v end
             end
-            detail = "$$ 格收集"
+            detail = "$$ 格奖金已收集"
         end
         state_.totalScratched = state_.totalScratched + 1
     end
@@ -1184,49 +1446,71 @@ function SettleScratch()
     if payout > 0 then
         state_.coins = state_.coins + payout
         state_.totalWon = state_.totalWon + payout
-        -- 三层反馈：HOT 全收 / 大额 = 白闪+粒子雨；普通中奖 = 金色粒子
         local bigHit = (scratch_.mode == "hot" and cur.isHot) or payout >= 2000
         local r = scratch_.rect
         spawnParticles(r.x + r.w / 2, r.y + r.h / 2, bigHit and 220 or 60, bigHit)
         if bigHit then flashAlpha_ = 1.0 end
     end
 
+    local kids = {
+        UI.Label { text = payout > 0 and "开奖结果" or "开奖结果", fontSize = 11, fontColor = C.dim },
+        UI.Label { text = payout > 0 and ("＋" .. fmt(payout) .. " 金币") or "这张没中",
+            fontSize = payout > 0 and 30 or 24,
+            fontColor = payout > 0 and C.goldL or { 170, 158, 136, 255 } },
+        UI.Label { text = detail, fontSize = 13, fontColor = { 208, 192, 158, 235 } },
+    }
+
+    if payout > 0 then
+        table.insert(kids, UI.Label { text = "奖金已到账 · 可看广告再领一份", fontSize = 11, fontColor = C.green })
+        table.insert(kids, UI.Button {
+            id = "doubleBtn",
+            text = "看广告 · 再领 " .. fmt(payout) .. " 币",
+            width = "100%", height = 46, fontSize = 14,
+            backgroundColor = { 62, 92, 58, 255 }, textColor = { 200, 246, 200, 255 },
+            borderRadius = 10, borderWidth = 1, borderColor = { 110, 160, 100, 255 },
+            onClick = function(self)
+                ShowAd("A2", function()
+                    self:SetText("已翻倍到账")
+                    self:SetDisabled(true)
+                    updateHud()
+                end, payout)
+            end,
+        })
+        table.insert(kids, darkBtn("收下 · 再来一张", function()
+            if scratch_.mode == "lottery" then StartScratch(cur.ticket) else StartHot() end
+        end))
+    else
+        table.insert(kids, goldBtn("再来一张", function()
+            if scratch_.mode == "lottery" then StartScratch(cur.ticket) else StartHot() end
+        end))
+    end
+    table.insert(kids, UI.Button {
+        text = "回大厅", width = "100%", height = 40, fontSize = 13,
+        backgroundColor = { 0, 0, 0, 0 }, textColor = C.dim, borderRadius = 8,
+        onClick = function() BuildLobby() end,
+    })
+    table.insert(kids, UI.Label { text = "剩余票 " .. state_.tickets .. " 张",
+        fontSize = 10, fontColor = { 130, 116, 92, 220 } })
+
     local banner = UI.Panel {
         id = "resultBanner",
         position = "absolute", top = 0, left = 0, right = 0, bottom = 0,
-        backgroundColor = { 0, 0, 0, 200 },
-        justifyContent = "center", alignItems = "center",
+        backgroundColor = { 0, 0, 0, 205 },
+        justifyContent = "center", alignItems = "center", padding = 22,
         children = {
             UI.Panel {
-                width = "80%", maxWidth = 320, padding = 28, gap = 10, alignItems = "center",
-                backgroundColor = payout > 0 and { 60, 45, 15, 250 } or { 40, 36, 30, 250 },
-                borderRadius = 16, borderWidth = 2,
-                borderColor = payout > 0 and { 255, 215, 0, 255 } or { 110, 100, 85, 200 },
-                children = {
-                    UI.Label { text = payout > 0 and ("🎉 + " .. fmt(payout) .. " 币！") or "谢谢惠顾", fontSize = 26,
-                        fontColor = payout > 0 and { 255, 215, 0, 255 } or { 180, 170, 150, 255 } },
-                    UI.Label { text = detail, fontSize = 14, fontColor = { 200, 185, 150, 230 } },
-                    UI.Button { text = "📺 看广告 多领一份（+" .. fmt(payout) .. "）", width = "70%",
-                        disabled = payout <= 0,
-                        onClick = function(self)
-                            ShowAd("A2", function()
-                                self:SetText("✅ 已多领一份")
-                                self:SetDisabled(true)
-                                updateHud()
-                            end, payout)
-                        end },
-                    UI.Button { text = "再来一张", variant = "primary", width = "70%",
-                        onClick = function()
-                            if scratch_.mode == "lottery" then StartScratch(cur.ticket) else StartHot() end
-                        end },
-                    UI.Button { text = "回大厅", width = "70%", onClick = function() BuildLobby() end },
-                }
-            }
-        }
+                width = "100%", maxWidth = 340, padding = 22, gap = 10, alignItems = "stretch",
+                backgroundColor = payout > 0 and { 52, 40, 18, 255 } or { 38, 33, 27, 255 },
+                borderRadius = 18, borderWidth = 2,
+                borderColor = payout > 0 and C.gold or { 104, 94, 80, 220 },
+                children = kids,
+            },
+        },
     }
     uiRoot_:AddChild(banner)
     saveGame()
 end
+
 
 -- ============================================================================
 -- 11. 转盘
@@ -1271,9 +1555,14 @@ function SettleWheel()
         state_.coins = state_.coins + s.value
         msg = "金币 +" .. fmt(s.value)
         if s.value >= 20000 then
-            spawnParticles(UI.GetWidth()/2, UI.GetHeight()*0.36, 220, true)
+            spawnParticles(UI.GetWidth()/2, UI.GetHeight()*0.325, 220, true)
             flashAlpha_ = 1.0
         end
+    elseif s.type == "jackpot" then
+        state_.coins = state_.coins + s.value
+        msg = "头奖！金币 +" .. fmt(s.value)
+        spawnParticles(UI.GetWidth()/2, UI.GetHeight()*0.325, 260, true)
+        flashAlpha_ = 1.0
     elseif s.type == "ticket" then
         state_.tickets = math.min(ECO.ticketCap, state_.tickets + s.value)
         msg = "免费票 +" .. s.value
@@ -1289,56 +1578,63 @@ function SettleWheel()
     local spin = uiRoot_:FindById("spinBtn") --[[@as Button?]]
     if spin then spin:SetText(state_.energy >= 1 and "再转一次（1 电）" or "电不足 · 等恢复") end
     local el = uiRoot_ and uiRoot_:FindById("wheelEnergy") --[[@as Label?]]
-    if el then el:SetText("⚡" .. state_.energy) end
+    if el then el:SetText("电 " .. state_.energy) end
+    local a4 = uiRoot_ and uiRoot_:FindById("a4Btn") --[[@as Button?]]
+    if a4 and state_.ads then
+        a4:SetText("电不够？看广告 +10 电（今日 " .. (state_.ads.byPlacement.A4 or 0) .. "/6）")
+    end
     saveGame()
 end
 
 function BuildWheel()
     state_.screen = "wheel"
+    local topPad = math.floor(UI.GetHeight() * 0.105)
     uiRoot_ = UI.Panel {
-        width = "100%", height = "100%",
-        backgroundColor = { 26, 20, 14, 255 },
+        width = "100%", height = "100%", backgroundColor = C.bg,
         justifyContent = "space-between",
         children = {
             UI.Panel {
-                width = "100%", padding = 12, paddingTop = 36,
-                justifyContent = "space-between", alignItems = "center",
+                width = "100%", paddingTop = topPad, paddingBottom = 6,
+                paddingLeft = 14, paddingRight = 14,
+                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
                 children = {
-                    UI.Button { text = "← 大厅", onClick = function() BuildLobby() end },
-                    UI.Label { text = "🎡 幸运转盘", fontSize = 19, fontColor = { 212, 175, 55, 255 } },
-                    UI.Label { id = "wheelEnergy", text = "⚡" .. state_.energy, fontSize = 15, fontColor = { 120, 180, 255, 255 } },
-                }
+                    UI.Button { text = "‹", width = 42, height = 38, fontSize = 22,
+                        backgroundColor = { 44, 34, 22, 255 }, textColor = C.goldL, borderRadius = 10,
+                        onClick = function() BuildLobby() end },
+                    UI.Label { text = "幸运转盘", fontSize = 17, fontColor = C.goldL },
+                    UI.Label { id = "wheelEnergy", text = "电 " .. state_.energy, fontSize = 12, fontColor = C.blue },
+                },
             },
-            UI.Panel { width = "100%", height = 330, pointerEvents = "none" },
+            UI.Panel { width = "100%", height = 360, pointerEvents = "none" },
             UI.Panel {
-                width = "100%", padding = 20, paddingBottom = 44,
-                justifyContent = "center", alignItems = "center", gap = 10,
+                width = "100%", paddingLeft = 18, paddingRight = 18, paddingBottom = 40,
+                alignItems = "center", gap = 10,
                 children = {
-                    UI.Label { id = "wheelResult", text = "消耗 1 电 · 转一次", fontSize = 17, fontColor = { 255, 215, 0, 255 } },
-                    UI.Button {
-                        id = "spinBtn",
-                        text = state_.energy >= 1 and "转！（1 电）" or "电不足 · 等恢复",
-                        variant = "primary", width = "70%",
-                        onClick = function()
-                            if not wheelAnim_.spinning then StartWheelSpin() end
-                        end,
-                    },
+                    UI.Label { id = "wheelResult", text = "消耗 1 电 · 转一次", fontSize = 16, fontColor = C.goldL },
+                    goldBtn(state_.energy >= 1 and "转！（1 电）" or "电不足 · 等恢复", function()
+                        if not wheelAnim_.spinning and state_.energy >= 1 then StartWheelSpin() end
+                    end, { height = 50, fontSize = 16, id = "spinBtn" }),
                     UI.Button {
                         id = "a4Btn",
-                        text = "📺 电不足？看广告 +10 电（今日 " .. (state_.ads.byPlacement.A4 or 0) .. "/6）",
-                        fontSize = 12, width = "70%",
+                        text = "电不够？看广告 +10 电（今日 0/6）",
+                        width = "100%", height = 42, fontSize = 12,
+                        backgroundColor = { 46, 42, 60, 255 }, textColor = { 210, 200, 240, 255 },
+                        borderRadius = 9, borderWidth = 1, borderColor = { 100, 88, 130, 255 },
                         onClick = function()
                             ShowAd("A4", function()
                                 local lbl = uiRoot_ and uiRoot_:FindById("wheelEnergy") --[[@as Label?]]
-                                if lbl then lbl:SetText("⚡" .. state_.energy) end
+                                if lbl then lbl:SetText("电 " .. state_.energy) end
                             end)
                         end },
-                }
+                    UI.Label { text = "1 电 = 1 次 · 每 5 分钟回 1 电 · 转盘结果即时到账",
+                        fontSize = 10, fontColor = { 140, 124, 100, 225 }, textAlign = "center" },
+                },
             },
-        }
+        },
     }
     UI.SetRoot(uiRoot_)
 end
+
 
 -- ============================================================================
 -- 12. 手机系统：抽卡 + 员工
@@ -1351,8 +1647,8 @@ function BuildPhone()
         backgroundColor = { 12, 12, 16, 255 },
         children = {
             UI.Panel {
-                width = "100%", padding = 12, paddingTop = 40,
-                justifyContent = "space-between", alignItems = "center",
+                width = "100%", padding = 12, paddingTop = math.floor(UI.GetHeight() * 0.105),
+                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
                 children = {
                     UI.Button { text = "←", onClick = function() BuildLobby() end },
                     UI.Label { text = "📱 我的手机", fontSize = 18, fontColor = { 220, 220, 230, 255 } },
@@ -1363,7 +1659,7 @@ function BuildPhone()
                 width = "100%", justifyContent = "center", alignItems = "center", gap = 18,
                 children = {
                     UI.Label { text = "应用（v0.4 上线 2 个）", fontSize = 12, fontColor = { 130, 130, 145, 220 } },
-                    UI.Panel { gap = 20, children = {
+                    UI.Panel { flexDirection = "row", gap = 16, children = {
                         UI.Button { text = "🐱\n招财猫\n抽卡", width = 96, height = 96, fontSize = 15,
                             onClick = function() BuildGacha() end },
                         UI.Button { text = "👷\n员工\n管理", width = 96, height = 96, fontSize = 15,
@@ -1406,8 +1702,8 @@ function BuildGacha()
         justifyContent = "space-between",
         children = {
             UI.Panel {
-                width = "100%", padding = 12, paddingTop = 36,
-                justifyContent = "space-between", alignItems = "center",
+                width = "100%", padding = 12, paddingTop = math.floor(UI.GetHeight() * 0.105),
+                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
                 children = {
                     UI.Button { text = "←", onClick = function() BuildPhone() end },
                     UI.Label { text = "🐱 招财猫 · 抽卡", fontSize = 18, fontColor = { 255, 200, 90, 255 } },
@@ -1419,7 +1715,7 @@ function BuildGacha()
                 children = {
                     UI.Label { text = "公示概率：UR 0.50% · SSR 3.70% · SR 27.80% · R 68.00%", fontSize = 11, fontColor = { 170, 170, 185, 220 } },
                     UI.Label { text = "十连必出 SR 及以上 · 重复转碎片", fontSize = 11, fontColor = { 150, 150, 165, 200 } },
-                    UI.Panel { gap = 8, flexWrap = "wrap", justifyContent = "center", width = "96%",
+                    UI.Panel { flexDirection = "row", gap = 8, flexWrap = "wrap", justifyContent = "center", width = "96%",
                         children = resultWidgets },
                 }
             },
@@ -1428,14 +1724,19 @@ function BuildGacha()
                 justifyContent = "center", gap = 10, alignItems = "center",
                 children = {
                     UI.Button {
-                        text = "单抽 · 160 钻", width = "70%", variant = "primary",
-                        onClick = function() DoGacha(false) end },
+                        text = "单抽 · 160 钻", width = "70%", height = 46, fontSize = 15,
+                        backgroundColor = { 212, 175, 55, 255 }, textColor = { 38, 28, 10, 255 },
+                        borderRadius = 10, onClick = function() DoGacha(false) end },
                     UI.Button {
-                        text = "十连 · 1,600 钻（必出SR+）", width = "70%",
+                        text = "十连 · 1,600 钻（必出 SR 以上）", width = "70%", height = 46, fontSize = 15,
+                        backgroundColor = { 54, 41, 26, 255 }, textColor = { 240, 220, 160, 255 },
+                        borderRadius = 10, borderWidth = 1, borderColor = { 138, 110, 54, 255 },
                         onClick = function() DoGacha(true) end },
                     UI.Button {
-                        id = "a5Btn", text = "📺 钻石不够？看广告 +50 钻（今日 " .. (state_.ads.byPlacement.A5 or 0) .. "/5）",
-                        fontSize = 12, width = "70%",
+                        id = "a5Btn", text = "钻石不够？看广告 +50 钻（今日 " .. (state_.ads.byPlacement.A5 or 0) .. "/5）",
+                        fontSize = 12, width = "70%", height = 40,
+                        backgroundColor = { 44, 60, 44, 255 }, textColor = { 172, 228, 180, 255 },
+                        borderRadius = 9,
                         onClick = function()
                             ShowAd("A5", function()
                                 local d = uiRoot_ and uiRoot_:FindById("diamondsLabel") --[[@as Label?]]
@@ -1547,8 +1848,8 @@ function BuildStaff()
         backgroundColor = { 18, 16, 24, 255 },
         children = {
             UI.Panel {
-                width = "100%", padding = 12, paddingTop = 36,
-                justifyContent = "space-between", alignItems = "center",
+                width = "100%", padding = 12, paddingTop = math.floor(UI.GetHeight() * 0.105),
+                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
                 children = {
                     UI.Button { text = "←", onClick = function() BuildPhone() end },
                     UI.Label { text = "👷 员工 · 上阵 " .. deployedCount .. "/3", fontSize = 17, fontColor = { 230, 230, 240, 255 } },
