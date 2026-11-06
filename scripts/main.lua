@@ -476,6 +476,57 @@ local scratch_ = {
 
 local wheelAnim_ = { spinning=false, angle=0, startAngle=0, targetAngle=0, elapsed=0, result=nil }
 
+-- 三层中奖反馈（GDD 第 11 章）
+-- T1 普通奖：金色粒子 60 颗 / T2 大奖(HOT/高倍)：全屏白闪 + 粒子雨 200 颗
+local particles_ = {}     -- { x,y,vx,vy,life,maxLife,color,size }
+local flashAlpha_ = 0     -- 白闪
+
+local function spawnParticles(cx, cy, n, burst)
+    for i = 1, n do
+        local a = rng() * math.pi * 2
+        local sp = (burst and 180 or 120) * (0.4 + rng() * 0.9)
+        local palette = burst and { {255,215,0},{255,120,60},{255,255,200} } or { {255,215,0},{255,180,40} }
+        local c = palette[math.floor(rng() * #palette) + 1]
+        particles_[#particles_ + 1] = {
+            x = cx, y = cy,
+            vx = math.cos(a) * sp, vy = math.sin(a) * sp - (burst and 90 or 40),
+            life = 1.1 + rng() * 0.7, maxLife = 1.8,
+            color = c, size = burst and (3 + rng() * 4) or (2 + rng() * 3),
+        }
+    end
+end
+
+local function updateParticles(dt)
+    for i = #particles_, 1, -1 do
+        local p = particles_[i]
+        p.life = p.life - dt
+        if p.life <= 0 then
+            table.remove(particles_, i)
+        else
+            p.vy = p.vy + 320 * dt          -- 重力
+            p.x = p.x + p.vx * dt
+            p.y = p.y + p.vy * dt
+        end
+    end
+    if flashAlpha_ > 0 then flashAlpha_ = math.max(0, flashAlpha_ - dt * 2.2) end
+end
+
+local function drawParticles(nvg)
+    for _, p in ipairs(particles_) do
+        local alpha = math.min(1, p.life / 0.5) * 255
+        nvgBeginPath(nvg)
+        nvgRect(nvg, p.x - p.size / 2, p.y - p.size / 2, p.size, p.size)
+        nvgFillColor(nvg, nvgRGBA(p.color[1], p.color[2], p.color[3], alpha))
+        nvgFill(nvg)
+    end
+    if flashAlpha_ > 0 then
+        nvgBeginPath(nvg)
+        nvgRect(nvg, 0, 0, UI.GetWidth(), UI.GetHeight())
+        nvgFillColor(nvg, nvgRGBA(255, 255, 245, math.floor(flashAlpha_ * 200)))
+        nvgFill(nvg)
+    end
+end
+
 local screenStack_ = {}      -- 简单返回栈：phone 等
 
 -- ============================================================================
@@ -632,9 +683,15 @@ function HandleUpdate(eventType, eventData)
         end
     end
 
+    -- 粒子推进
+    updateParticles(dtMs / 1000)
+
     -- overlays
-    if state_.screen == "scratch" and not scratch_.settled then
-        UI.QueueOverlay(function(nvg) DrawFoil(nvg) end)
+    if state_.screen == "scratch" then
+        if not scratch_.settled then
+            UI.QueueOverlay(function(nvg) DrawFoil(nvg) end)
+        end
+        UI.QueueOverlay(function(nvg) drawParticles(nvg) end)
     elseif state_.screen == "wheel" then
         if wheelAnim_.spinning then
             wheelAnim_.elapsed = wheelAnim_.elapsed + dtMs / 1000
@@ -1120,6 +1177,11 @@ function SettleScratch()
     if payout > 0 then
         state_.coins = state_.coins + payout
         state_.totalWon = state_.totalWon + payout
+        -- 三层反馈：HOT 全收 / 大额 = 白闪+粒子雨；普通中奖 = 金色粒子
+        local bigHit = (scratch_.mode == "hot" and cur.isHot) or payout >= 2000
+        local r = scratch_.rect
+        spawnParticles(r.x + r.w / 2, r.y + r.h / 2, bigHit and 220 or 60, bigHit)
+        if bigHit then flashAlpha_ = 1.0 end
     end
 
     local banner = UI.Panel {
@@ -1201,6 +1263,10 @@ function SettleWheel()
     elseif s.type == "coin" then
         state_.coins = state_.coins + s.value
         msg = "金币 +" .. fmt(s.value)
+        if s.value >= 20000 then
+            spawnParticles(UI.GetWidth()/2, UI.GetHeight()*0.36, 220, true)
+            flashAlpha_ = 1.0
+        end
     elseif s.type == "ticket" then
         state_.tickets = math.min(ECO.ticketCap, state_.tickets + s.value)
         msg = "免费票 +" .. s.value
