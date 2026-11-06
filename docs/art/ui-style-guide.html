@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>好运游戏厅 · 视觉稿 v2.0</title>
+<title>好运游戏厅 · 视觉稿 v2.1</title>
 <style>
 /* =========================================================
-   《好运游戏厅》UI 视觉稿 v2.0
-   色值与 docs/art/art-bible-v2.md 完全一致（同名 Token）
+   《好运游戏厅》UI 视觉稿 v2.1（8 屏）
+   色值与 docs/art/art-bible-v2.md v2.1 完全一致（同名 Token）
    技术前提：全部可由 NanoVG 代码绘制，无位图依赖
+   v2.1 新增：真实票面解剖（§10）· 8 款皮肤（§11）· 刮层规范（§12）
    ========================================================= */
 :root{
   /* 暗场 */
@@ -66,6 +67,7 @@ body{
 /* ---------- 色板条 ---------- */
 .palette{display:flex;gap:0;justify-content:center;margin:22px auto 0;max-width:1400px;padding:0 24px}
 .palette i{flex:1;height:8px;display:block}
+.palette.skins i{height:16px}
 .palette i:first-child{border-radius:4px 0 0 4px}
 .palette i:last-child{border-radius:0 4px 4px 0}
 .palette-cap{text-align:center;font-size:11px;color:var(--text-3);letter-spacing:2px;margin-top:8px}
@@ -154,6 +156,14 @@ body{
 .tcard.s-fucai::before{background:linear-gradient(180deg,#E23A2E,#8C1024)}
 .tcard.s-ticai::before{background:linear-gradient(180deg,#C8102E 0%,#C8102E 46%,#00A15C 46%,#00713F 100%)}
 .tcard.s-hot::before{background:linear-gradient(180deg,#FF2E88,#8B5CF6)}
+/* 皮肤色脊（v2.1 八款皮肤，用于大厅票券卡） */
+.tcard.s1::before{background:linear-gradient(180deg,#BE3A2B,#8E2418)}
+.tcard.s2::before{background:linear-gradient(180deg,#1F5C46,#123F31)}
+.tcard.s3::before{background:linear-gradient(180deg,#C8102E,#8C1024)}
+.tcard.s7::before{background:linear-gradient(180deg,#1D6E63 0%,#1D6E63 52%,#C9A24B 52%,#B99048 100%)}
+.tcard.s8{background:linear-gradient(150deg,#26211C 0%,#1C1917 70%);border-color:rgba(212,175,55,.26)}
+.tcard.s8::before{background:linear-gradient(180deg,#D4AF37,#8A6A20)}
+/* HOT */
 .tcard.s-hot{background:linear-gradient(150deg,#151026 0%,#0B0918 70%);
   border-color:rgba(255,46,136,.24);
   box-shadow:0 5px 16px rgba(0,0,0,.5), 0 0 22px rgba(255,46,136,.10)}
@@ -220,7 +230,7 @@ body{
 .homebar i{width:120px;height:4px;border-radius:2px;background:rgba(255,255,255,.22);display:block}
 
 /* =========================================================
-   ② 刮卡页（体彩顶呱刮 · 主打皮肤）
+   ② 刮卡页（旧版红条票 · 已被 v2.1 取代，见下方 .tk 组件）
    ========================================================= */
 .topnav{height:52px;display:flex;align-items:center;padding:0 8px 0 6px;flex:none}
 .topnav .back{width:44px;height:44px;display:grid;place-items:center}
@@ -353,7 +363,7 @@ body{
 .rulebar .sp{width:1px;height:9px;background:rgba(255,255,255,.14);flex:none}
 
 /* =========================================================
-   ③ 开奖结算
+   ③ 揭晓结算
    ========================================================= */
 .win-screen{background:
   radial-gradient(70% 46% at 50% 34%, rgba(212,175,55,.22), rgba(212,175,55,0) 68%),
@@ -560,6 +570,376 @@ body{
   background:rgba(212,175,55,.05);border:1px solid rgba(212,175,55,.16);
   color:var(--text-2);line-height:1.9}
 .footer-num b{color:var(--gold-300)}
+
+/* =========================================================
+   v2.1 · 真实票面解剖（art-bible §10）
+   八层：纸 → 框 → 票名 → 玩法 → 对照号 → 号码格 → 刮层 → 票根
+   ========================================================= */
+
+/* ---- 8 款皮肤 Token（§11） ---- */
+.s1{--t-paper:#F5EBD3;--t-primary:#BE3A2B;--t-accent:#C9A24B;--t-border:#BE3A2B;--t-title:#8E2418;
+    --t-num:#171310;--t-hit:#B93B2C;--t-hitbg:#FBEDD9;--t-cellbg:#FBF5E6;--t-cellbd:#B8A483}
+.s2{--t-paper:#F2EAD8;--t-primary:#1F5C46;--t-accent:#B99048;--t-border:#1F5C46;--t-title:#16241F;
+    --t-num:#1A2E26;--t-hit:#1F5C46;--t-hitbg:#EFE6CE;--t-cellbg:#FAF4E4;--t-cellbd:#9FAE9B}
+.s3{--t-paper:#F7EFDF;--t-primary:#C8102E;--t-accent:#D4AF37;--t-border:#C8102E;--t-title:#8C1024;
+    --t-num:#171310;--t-hit:#C8102E;--t-hitbg:#FFF6D8;--t-cellbg:#FFFDF6;--t-cellbd:#D8B98A}
+.s4{--t-paper:#F6E8DE;--t-primary:#B3242C;--t-accent:#C4577C;--t-border:#B3242C;--t-title:#7E1A22;
+    --t-num:#171310;--t-hit:#B3242C;--t-hitbg:#FBE8E2;--t-cellbg:#FDF3EC;--t-cellbd:#C9A79E}
+.s5{--t-paper:#EADFC8;--t-primary:#A65A32;--t-accent:#2E6B72;--t-border:#A65A32;--t-title:#3A2416;
+    --t-num:#2A1C12;--t-hit:#A65A32;--t-hitbg:#F3E4CC;--t-cellbg:#F3E9D3;--t-cellbd:#B39B72}
+.s6{--t-paper:#F0F3F4;--t-primary:#3C6E8F;--t-accent:#DCE6EC;--t-border:#3C6E8F;--t-title:#1E3542;
+    --t-num:#1B2B33;--t-hit:#3C6E8F;--t-hitbg:#EAF2F7;--t-cellbg:#FBFDFD;--t-cellbd:#C2D2DB}
+.s7{--t-paper:#F1EBD9;--t-primary:#1D6E63;--t-accent:#C9A24B;--t-border:#1D6E63;--t-title:#14332E;
+    --t-num:#14332E;--t-hit:#B23A34;--t-hitbg:#F7E7DE;--t-cellbg:#FAF6E9;--t-cellbd:#A8B8A8}
+.s8{--t-paper:#1C1917;--t-primary:#D4AF37;--t-accent:#8A6A20;--t-border:#D4AF37;--t-title:#E8C766;
+    --t-num:#F0E6D2;--t-hit:#FFD466;--t-hitbg:#3A3020;--t-cellbg:#24201C;--t-cellbd:#4A3F2E}
+
+/* ---- 票面容器 ---- */
+.tk{position:relative;width:358px;border-radius:3px;overflow:hidden;
+  box-shadow:0 3px 0 rgba(0,0,0,.42), 0 16px 32px rgba(0,0,0,.55)}
+/* 第1层：纸 + 网点 + 纤维 + 边缘脏 */
+.tk .paper{position:absolute;inset:0;background:var(--t-paper)}
+.tk .paper::before{content:"";position:absolute;inset:0;
+  background-image:
+    repeating-linear-gradient(45deg, rgba(107,91,71,.085) 0 .8px, transparent .8px 3.5px),
+    repeating-linear-gradient(-45deg, rgba(107,91,71,.06) 0 .8px, transparent .8px 3.5px),
+    radial-gradient(120% 90% at 50% 0%, rgba(0,0,0,0) 52%, rgba(107,91,71,.16) 100%);
+  opacity:.85}
+.tk .paper::after{content:"";position:absolute;inset:0;opacity:.45;
+  background-image:
+    repeating-linear-gradient(73deg, rgba(201,185,155,.5) 0 1px, transparent 1px 11px),
+    repeating-linear-gradient(-12deg, rgba(201,185,155,.4) 0 1px, transparent 1px 17px)}
+/* 绒面（仅 S4） */
+.tk.s4 .paper::after{background-image:
+  radial-gradient(rgba(179,36,44,.10) .6px, transparent .7px);
+  background-size:2.5px 2.5px;opacity:1}
+
+/* 第2层：双线框 + 角花 */
+.tk .tframe{position:absolute;inset:0;pointer-events:none;z-index:3}
+.tk .tframe::before{content:"";position:absolute;inset:0;border:1.2px solid var(--t-border)}
+.tk .tframe::after{content:"";position:absolute;inset:5px;border:.7px solid var(--t-border);opacity:.55}
+.tk .tframe .co{position:absolute;width:16px;height:16px;fill:none;
+  stroke:var(--t-accent);stroke-width:1.2;stroke-linecap:round}
+.tk .tframe .co.tl{left:5px;top:5px}
+.tk .tframe .co.tr{right:5px;top:5px;transform:scaleX(-1)}
+.tk .tframe .co.bl{left:5px;bottom:5px;transform:scaleY(-1)}
+.tk .tframe .co.br{right:5px;bottom:5px;transform:scale(-1,-1)}
+/* 纹样带（上/下） */
+.tk .band{position:absolute;left:5px;right:5px;height:9px;overflow:hidden}
+.tk .band.top{top:5px}
+.tk .band.bot{bottom:5px;transform:scaleY(-1)}
+.tk .band svg{display:block;width:100%;height:9px}
+
+/* 第3层：票名压印 */
+.tk .in{position:relative;z-index:2;padding:17px 16px 16px}
+.tk .kick{font-size:7.5px;letter-spacing:3px;color:var(--t-title);opacity:.5;text-align:center}
+.tk .name{font-size:26px;line-height:1.14;letter-spacing:-.5px;text-align:center;font-weight:700;
+  color:var(--t-title);margin-top:3px;
+  text-shadow:0 .7px 0 rgba(255,255,255,.55), 0 -.5px 0 rgba(0,0,0,.12)}
+.tk .name.gold{background:linear-gradient(180deg,#FFF3CB,#F6E29E 24%,#D4AF37 70%,#B08D28);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  text-shadow:none;filter:drop-shadow(0 .8px 0 rgba(140,16,36,.55))}
+.tk .name.inkgold{color:#E8C766;text-shadow:.9px .9px 0 #8A6A20, 0 0 0 transparent}
+.tk .name.offset{position:relative}
+.tk .name.offset::before{content:attr(data-t);position:absolute;left:1.2px;top:.9px;
+  color:#2E6B72;opacity:.85;z-index:-1}
+.tk .rulename{margin:0 auto;width:max-content;padding-bottom:6px;border-bottom:.8px solid var(--t-border);border-bottom-color:color-mix(in srgb,var(--t-border) 55%, transparent)}
+.tk .sub{font-size:9px;letter-spacing:2px;text-align:center;color:var(--t-title);opacity:.62;margin-top:5px}
+
+/* 第4层：玩法说明 */
+.tk .rule{display:flex;gap:6px;align-items:flex-start;margin-top:9px;padding-top:8px;
+  border-top:.6px dashed rgba(107,91,71,.4)}
+.tk .rule i{flex:none;width:2.4px;height:2.4px;border-radius:50%;background:var(--t-primary);
+  margin-top:5px;box-shadow:0 13px 0 var(--t-primary)}
+.tk .rule p{font-size:10.5px;line-height:13.5px;color:var(--t-num);opacity:.72;letter-spacing:.2px}
+.tk .rule p b{font-weight:700;color:var(--t-primary);opacity:1}
+
+/* 第5层：对照号 */
+.tk .win{margin-top:9px;padding:8px 0 9px;border-bottom:.8px solid rgba(107,91,71,.28)}
+.tk .win .lb{font-size:9px;letter-spacing:2px;text-align:center;color:var(--t-primary);margin-bottom:6px}
+.tk .wrow{display:flex;gap:12px;justify-content:center}
+.tk .wbox{width:46px;height:46px;border:1px solid rgba(23,19,16,.78);border-radius:3px;
+  background:#FFFDF6;display:grid;place-items:center;position:relative;
+  box-shadow:inset 0 0 0 3px rgba(23,19,16,.05)}
+.tk .wbox b{font-size:26px;line-height:1;color:#171310;font-weight:700;letter-spacing:0}
+
+/* 第6层：号码格 */
+.tk .grid{display:grid;gap:6px;margin-top:9px}
+.tk .grid.c4{grid-template-columns:repeat(4,1fr)}
+.tk .cell{position:relative;height:42px;border:.8px solid var(--t-cellbd);border-radius:2px;
+  background:var(--t-cellbg);display:flex;align-items:center;overflow:hidden}
+.tk .cell .n{font-size:19px;line-height:1;font-weight:700;color:var(--t-num);margin-left:7px;position:relative;z-index:2}
+.tk .cell .pz{font-size:8.5px;color:var(--t-num);opacity:.72;margin-left:auto;margin-right:6px;
+  white-space:nowrap;position:relative;z-index:2}
+.tk .cell .pz s{font-size:7px;text-decoration:none;opacity:.6}
+.tk .cell.hit{background:var(--t-hitbg);border-color:var(--t-hit);border-width:1.6px}
+.tk .cell.hit .n,.tk .cell.hit .pz{color:var(--t-hit)}
+/* 4 列小格：号码在上、奖金在下（真票写法），封章不压金额 */
+.tk .grid.c4 .cell{align-items:flex-start}
+.tk .grid.c4 .cell .n{margin-top:6px}
+.tk .grid.c4 .cell .pz{align-self:flex-end;margin-bottom:5px;margin-right:5px}
+.tk .cell.hit .pz{margin-right:24px}
+.tk .grid.c4 .cell.hit .pz{margin-right:5px}
+.tk .cell .seal{position:absolute;right:4px;top:3px;width:16px;height:16px;border-radius:50%;
+  border:1.2px solid var(--t-hit);display:grid;place-items:center;
+  font-size:9px;line-height:1;color:var(--t-hit);transform:rotate(-13deg);z-index:3}
+.tk .grid.c4 .cell .seal{width:14px;height:14px;font-size:8px;right:2px;top:2px;border-width:1px}
+/* 未刮：涂层（§12.1 配方由 .foil-a/b/c/d 切） */
+.tk .cell.foil{background:linear-gradient(108deg,#D9DEE5 0%,#C0C7D1 58%,#98A0AC 100%);
+  border-color:rgba(58,64,72,.3);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.62), inset -1px -1px 0 rgba(58,64,72,.26)}
+.tk .cell.foil.fb{background:linear-gradient(108deg,#D2D6DA 0%,#B9BEC4 58%,#979CA3 100%)}
+.tk .cell.foil.fc{background:linear-gradient(108deg,#E3EBF1 0%,#C6D2DC 58%,#9FAEBC 100%)}
+.tk .cell.foil.fd{background:linear-gradient(108deg,#9A8A62 0%,#6E6349 58%,#4B4436 100%)}
+.tk .cell.foil::before{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(180deg, rgba(255,255,255,.13) 0 1px, rgba(255,255,255,0) 1px 2px)}
+.tk .cell.foil::after{content:"";position:absolute;top:-40%;left:-12%;width:44%;height:180%;
+  transform:rotate(-24deg);
+  background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.42),rgba(255,255,255,0))}
+.tk .cell.foil em{position:absolute;inset:0;display:grid;place-items:center;z-index:2;
+  font-size:12px;font-style:normal;letter-spacing:2px;color:#6E7683;opacity:.6}
+.tk .cell.foil.fd em{color:#3A3428;opacity:.65}
+/* 半刮：毛边（子格外扩 0~1.4dp → 锯齿边界，§12.2） */
+.tk .cell.part{background:var(--t-cellbg)}
+.tk .cell.part .n,.tk .cell.part .pz{z-index:1}
+.tk .cell.part .foilrem{position:absolute;inset:0;z-index:3;
+  background:linear-gradient(108deg,#D9DEE5 0%,#C0C7D1 58%,#98A0AC 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
+.tk .cell.part .foilrem::before{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(180deg, rgba(255,255,255,.13) 0 1px, rgba(255,255,255,0) 1px 2px)}
+/* a 刮到一半（右侧残留，号码已露） · b 上缘残留 · c 斜向残留
+   边界锯齿 = 子格外扩 0–1.4dp 的等效表达（§12.2） */
+.tk .cell.part.a .foilrem{clip-path:polygon(44% 0,100% 0,100% 100%,40% 100%,46% 89%,42% 78%,48% 66%,43% 55%,47% 43%,41% 31%,47% 19%,43% 8%)}
+.tk .cell.part.b .foilrem{clip-path:polygon(0 0,100% 0,100% 42%,88% 48%,96% 55%,82% 50%,74% 58%,60% 52%,48% 59%,34% 53%,20% 59%,8% 53%,0 57%)}
+.tk .cell.part.c .foilrem{clip-path:polygon(40% 0,100% 0,100% 74%,90% 69%,84% 84%,72% 73%,64% 88%,53% 75%,45% 86%,37% 68%,41% 50%,31% 38%,37% 20%)}
+/* 残留银粉雾 */
+.tk .cell.part::after{content:"";position:absolute;inset:0;background:rgba(200,205,212,.12);z-index:1}
+/* 刃痕 */
+.tk .cell.part .scr{position:absolute;inset:0;z-index:2;overflow:hidden}
+.tk .cell.part .scr i{position:absolute;display:block;width:80%;height:1.2px;border-radius:1px;
+  background:rgba(255,255,255,.5);transform-origin:left center}
+.tk .cell.part .scr i:first-child{left:6%;top:32%;transform:rotate(-6deg)}
+.tk .cell.part .scr i:last-child{left:14%;top:64%;transform:rotate(4deg)}
+
+/* 第8层：票根 */
+.tk .stub{margin-top:10px;padding-top:8px;position:relative;
+  border-top:1px dashed rgba(107,91,71,.5)}
+.tk .stub::before,.tk .stub::after{content:"";position:absolute;top:-4px;width:7px;height:7px;
+  border-radius:50%;background:var(--ink-900)}
+.tk .stub::before{left:-19px}
+.tk .stub::after{right:-19px}
+.tk .stub .row{display:flex;align-items:center;gap:7px;padding-bottom:6px}
+.tk .stub .bc{width:96px;height:14px;flex:none;opacity:.82;
+  background:repeating-linear-gradient(90deg,#171310 0 1px,transparent 1px 3px,#171310 3px 5px,transparent 5px 6px,#171310 6px 8px,transparent 8px 11px,#171310 11px 11.8px,transparent 11.8px 14px)}
+.tk .stub .sn{font-size:8px;letter-spacing:1.2px;color:var(--t-num);opacity:.72;white-space:nowrap}
+.tk .stub .dots{display:grid;grid-template-columns:repeat(7,1fr);gap:1.6px;width:22px;flex:none;margin-left:auto}
+.tk .stub .dots i{width:2.4px;height:2.4px;border-radius:50%;background:var(--t-num);opacity:.55}
+.tk .stub .dots i.o{opacity:.12}
+.tk .stub .guard{margin-left:6px;flex:none;width:34px;height:18px;border-radius:1px;
+  background:linear-gradient(108deg,#D9DEE5,#C0C7D1 58%,#98A0AC);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset -1px -1px 0 rgba(58,64,72,.3);
+  display:grid;place-items:center;font-size:5.5px;line-height:1;color:#5A626D;text-align:center;letter-spacing:0}
+.tk .stub .micro{font-size:5px;letter-spacing:.6px;color:var(--t-num);opacity:.42;
+  white-space:nowrap;overflow:hidden;padding-bottom:1px}
+
+/* 紧凑档：2 列 × 5 行的十格票，纵向要压进一屏（art-bible §13.5 高度核算） */
+.tk.dense .in{padding-top:14px}
+.tk.dense .name{font-size:24px}
+.tk.dense .sub{margin-top:3px}
+.tk.dense .rule{margin-top:7px;padding-top:6px}
+.tk.dense .win{margin-top:7px;padding:6px 0 7px}
+.tk.dense .wbox{width:44px;height:44px}
+.tk.dense .wbox b{font-size:24px}
+.tk.dense .grid{gap:5px;margin-top:7px}
+.tk.dense .cell{height:38px}
+.tk.dense .cell .n{font-size:18px}
+.tk.dense .stub{margin-top:8px;padding-top:7px}
+
+/* 票面变体：深色纸 / 冷纸 的网点补正 */
+.tk.s8 .paper::before{background-image:
+  repeating-linear-gradient(45deg, rgba(212,175,55,.05) 0 .8px, transparent .8px 3.5px),
+  repeating-linear-gradient(-45deg, rgba(212,175,55,.035) 0 .8px, transparent .8px 3.5px),
+  radial-gradient(120% 90% at 50% 0%, rgba(0,0,0,0) 45%, rgba(0,0,0,.35) 100%)}
+.tk.s8 .paper::after{background-image:
+  repeating-linear-gradient(90deg, rgba(212,175,55,.06) 0 .8px, transparent .8px 16px),
+  repeating-linear-gradient(0deg, rgba(212,175,55,.06) 0 .8px, transparent .8px 16px)}
+
+/* =========================================================
+   v2.1 · 刮刀三档（§12.3）
+   ========================================================= */
+.toolbar{display:flex;gap:8px;margin-top:10px}
+.tool{flex:1;height:52px;border-radius:9px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:4px;
+  background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.07);position:relative}
+.tool.on{background:rgba(212,175,55,.09);border-color:rgba(212,175,55,.42)}
+.tool.on::after{content:"";position:absolute;left:50%;bottom:-1px;transform:translateX(-50%);
+  width:22px;height:2.6px;border-radius:1px;background:var(--gold-500)}
+.tool .shape{flex:none}
+.tool .lb{font-size:9.5px;letter-spacing:1px;color:var(--text-3)}
+.tool.on .lb{color:var(--gold-300)}
+/* ① 指刮 28×10 r5 */
+.sp-finger{width:28px;height:10px;border-radius:5px;background:#EDE6D6;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 0 0 1px #B9AE97}
+/* ② 骨刮 46×14 楔形 */
+.sp-bone{width:46px;height:14px;background:#F0EADC;
+  clip-path:polygon(0 0,89% 0,100% 50%,89% 100%,0 100%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.9), 0 0 0 1px #BFB49C;position:relative}
+.sp-bone::after{content:"";position:absolute;left:18%;top:22%;width:14%;height:56%;
+  border-left:1px solid #BFB49C;border-right:1px solid #BFB49C}
+/* ③ 铜铲 58×16 */
+.sp-copper{width:58px;height:16px;
+  background:linear-gradient(180deg,#D6B569,#C9A24B 55%,#8A6A20);
+  clip-path:polygon(0 12%,87% 0,100% 50%,87% 100%,12% 100%,0 88%);
+  position:relative;box-shadow:inset 0 1px 0 rgba(255,255,255,.45)}
+.sp-copper::after{content:"";position:absolute;left:28%;top:42%;width:3px;height:3px;border-radius:50%;
+  background:#6E4E12;box-shadow:15px 0 0 #6E4E12}
+
+/* 刻度进度条（§12.4 样式 A） */
+.tickbar{display:flex;align-items:center;gap:8px;margin-top:10px}
+.tickbar .ticks{display:flex;gap:2.6px;flex:1}
+.tickbar .ticks i{flex:1;height:10px;border-radius:1px;background:#2F2118;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.45)}
+.tickbar .ticks i.done{background:linear-gradient(180deg,#F6E29E,#D4AF37 55%,#B08D28);
+  box-shadow:inset 0 .8px 0 rgba(255,255,255,.6)}
+.tickbar span{font-size:11px;color:var(--gold-300);letter-spacing:.5px;flex:none}
+
+/* =========================================================
+   v2.1 · 柜台：票种缩略图（§13.1）
+   ========================================================= */
+.shelf{display:flex;gap:9px;margin-top:8px;overflow:hidden;padding-bottom:4px;
+  -webkit-mask-image:linear-gradient(90deg,#000 90%,rgba(0,0,0,.25) 100%)}
+.thumb{width:100px;flex:none;position:relative}
+.thumb .mini{position:relative;width:72px;height:102px;margin:0 auto;border-radius:3px;overflow:hidden;
+  background:var(--t-paper);box-shadow:0 2px 0 rgba(0,0,0,.55), 0 7px 14px rgba(0,0,0,.5);
+  border:.8px solid var(--t-border)}
+.thumb .mini .bt{position:absolute;left:3px;right:3px;top:3px;height:4px;background:var(--t-border);opacity:.8}
+.thumb .mini .nm{position:absolute;left:0;right:0;top:10px;text-align:center;font-size:10px;
+  letter-spacing:-.2px;font-weight:700;color:var(--t-title);
+  text-shadow:0 .5px 0 rgba(255,255,255,.5)}
+.thumb .mini .ln{position:absolute;left:7px;height:1px;background:rgba(107,91,71,.42)}
+.thumb .mini .fo{position:absolute;width:22px;height:14px;border-radius:1px;
+  background:linear-gradient(108deg,#D9DEE5,#C0C7D1 58%,#98A0AC);
+  box-shadow:inset 0 .8px 0 rgba(255,255,255,.6)}
+.thumb .mini .bc2{position:absolute;left:5px;right:5px;bottom:4px;height:3px;opacity:.7;
+  background:repeating-linear-gradient(90deg,#171310 0 1px,transparent 1px 2.4px)}
+.thumb.on .mini{outline:1.8px solid var(--t-primary);outline-offset:2px;transform:translateY(-2px)}
+.thumb .tn{text-align:center;font-size:11px;color:var(--text);letter-spacing:.5px;margin-top:9px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.thumb .tp{text-align:center;font-size:12px;color:var(--gold-500);margin-top:2px;letter-spacing:.3px}
+.thumb .tp small{font-size:8px;color:var(--text-3);margin-left:1px}
+.thumb .tm{text-align:center;font-size:9px;color:var(--text-3);margin-top:2px;letter-spacing:.3px}
+.thumb.lock .mini{filter:grayscale(1) brightness(.45)}
+.thumb.lock .tn,.thumb.lock .tp{color:var(--text-3)}
+
+/* 批量购买段控（§13.2） */
+.batch{display:flex;align-items:center;gap:10px;margin-top:12px}
+.seg{display:flex;flex:1;height:34px;border-radius:8px;background:#2F2118;
+  box-shadow:inset 0 0 0 1px rgba(0,0,0,.5);overflow:hidden}
+.seg i{flex:1;display:grid;place-items:center;font-size:13px;font-style:normal;
+  color:var(--text-3);position:relative;letter-spacing:.5px}
+.seg i+i::before{content:"";position:absolute;left:0;top:8px;bottom:8px;width:1px;
+  background:rgba(255,255,255,.08)}
+.seg i.on{color:var(--gold-300);background:rgba(212,175,55,.10);
+  box-shadow:inset 0 0 0 1px rgba(212,175,55,.45)}
+.seg i.on::after{content:"";position:absolute;left:50%;bottom:0;transform:translateX(-50%);
+  width:20px;height:2px;background:var(--gold-500)}
+.batch .sum{flex:none;font-size:13px;color:var(--gold-500);letter-spacing:.3px}
+.batch .sum small{font-size:9px;color:var(--text-3);margin-left:2px}
+
+/* 免费票倒计时（§13.4） */
+.free{display:flex;align-items:center;gap:8px;height:30px;border-radius:15px;padding:0 12px 0 10px;
+  background:rgba(212,175,55,.06);border:1px solid rgba(212,175,55,.28);
+  position:relative;overflow:hidden;width:max-content}
+.free .ic{width:14px;height:10px;border-radius:2px;background:var(--gold-300);flex:none;position:relative}
+.free .ic::after{content:"";position:absolute;left:4px;top:0;bottom:0;width:1px;background:rgba(18,12,9,.5);
+  box-shadow:5px 0 0 rgba(18,12,9,.5)}
+.free .tx{font-size:11px;color:var(--text-2);letter-spacing:.5px}
+.free .cd{font-size:13px;color:var(--gold-300);letter-spacing:1px}
+.free .pg{position:absolute;left:0;bottom:0;height:2px;background:rgba(212,175,55,.55);width:38%}
+
+/* =========================================================
+   v2.1 · 兑付台（§13.3）
+   ========================================================= */
+.stack{position:relative;height:100px;margin-top:10px;padding-top:22px}
+.stack .stk{position:absolute;left:0;right:0;height:76px;border-radius:3px;
+  background:var(--paper);border:.8px solid rgba(43,33,24,.35);
+  box-shadow:0 2px 0 rgba(0,0,0,.4), 0 8px 18px rgba(0,0,0,.45);
+  display:flex;align-items:center;padding:0 12px;gap:10px}
+.stack .stk.p3{top:0;transform:rotate(1.2deg) scale(.955);opacity:.5;
+  background:var(--paper-2);border-color:rgba(43,33,24,.22)}
+.stack .stk.p2{top:11px;transform:rotate(-1.5deg) scale(.977);opacity:.74;
+  background:var(--paper-2);border-color:rgba(43,33,24,.28)}
+.stack .stk.p1{top:22px;background:var(--paper)}
+.stack .stk .nm{font-size:13px;color:var(--ink-paper);letter-spacing:1px;font-weight:500}
+.stack .stk .no{font-size:7.5px;color:var(--ink-paper-2);letter-spacing:1px;margin-top:3px}
+.stack .stk .am{margin-left:auto;font-size:17px;color:var(--red-500);letter-spacing:.3px}
+.stack .stk .am small{font-size:9px;color:var(--ink-paper-2);margin-left:2px}
+.stack .stk .am.zero{font-size:11px;color:var(--text-3);letter-spacing:1px}
+.stack .stk .badge{flex:none;width:20px;height:20px;border-radius:50%;background:var(--red-500);
+  display:grid;place-items:center;font-size:8px;color:#FFF8EC;letter-spacing:0}
+
+/* 取景框：不做全屏压暗（会造成硬边），改用框内柔光 + 角标 */
+.scanner{position:relative;width:208px;height:132px;margin:16px auto 0;
+  border-radius:6px;
+  background:radial-gradient(140% 120% at 50% 45%, rgba(212,175,55,.10), rgba(0,0,0,.42) 72%);
+  box-shadow:inset 0 0 0 .8px rgba(246,226,158,.28), 0 8px 22px rgba(0,0,0,.45)}
+.scanner .cut{display:none}
+.scanner .cor{position:absolute;width:18px;height:18px;border:2.4px solid var(--gold-300);border-radius:1px}
+.scanner .cor.tl{left:-2px;top:-2px;border-right:0;border-bottom:0}
+.scanner .cor.tr{right:-2px;top:-2px;border-left:0;border-bottom:0}
+.scanner .cor.bl{left:-2px;bottom:-2px;border-right:0;border-top:0}
+.scanner .cor.br{right:-2px;bottom:-2px;border-left:0;border-top:0}
+.scanner .scan{position:absolute;left:6px;right:6px;height:2px;top:20%;border-radius:1px;
+  background:rgba(246,226,158,.85);
+  box-shadow:0 0 12px 2px rgba(212,175,55,.45), 0 -14px 18px -8px rgba(246,226,158,.4);
+  animation:scanmove 1.8s ease-in-out infinite}
+@keyframes scanmove{0%{top:16%}50%{top:82%}100%{top:16%}}
+.scanner .mini-tk{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-2deg);
+  width:150px;height:58px;border-radius:2px;background:var(--paper);
+  border:.8px solid rgba(43,33,24,.4);box-shadow:0 6px 16px rgba(0,0,0,.6);
+  display:flex;align-items:center;padding:0 9px;gap:8px}
+.scanner .mini-tk .t1{font-size:11px;color:var(--ink-paper);letter-spacing:1px}
+.scanner .mini-tk .t2{font-size:6px;color:var(--ink-paper-2);letter-spacing:.8px;margin-top:2px}
+.scanner .mini-tk .guard{position:absolute;right:8px;bottom:8px;width:34px;height:18px;border-radius:1px;
+  background:linear-gradient(108deg,#D9DEE5,#C0C7D1 58%,#98A0AC);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6),inset -1px -1px 0 rgba(58,64,72,.3);
+  display:grid;place-items:center;font-size:5.5px;color:#5A626D;text-align:center;line-height:1}
+.scanner-tip{text-align:center;font-size:12px;color:var(--text-2);letter-spacing:.5px;margin-top:12px}
+.scanner-tip b{color:var(--gold-300);font-weight:500}
+
+/* 兑付结果卡 */
+.rcard{margin-top:14px;border-radius:16px;padding:16px 18px 14px;
+  background:#241811;border:1px solid rgba(212,175,55,.42);
+  box-shadow:0 0 30px rgba(212,175,55,.16), 0 12px 28px rgba(0,0,0,.5)}
+.rcard .hd{font-size:12px;color:var(--text-2);letter-spacing:1.5px;text-align:center}
+.rcard .big{display:flex;align-items:flex-end;justify-content:center;gap:5px;margin-top:6px}
+.rcard .big b{font-size:40px;line-height:1;font-weight:600;letter-spacing:0;
+  background:linear-gradient(180deg,#FFF3CB,#F6E29E 30%,#D4AF37 78%,#B08D28);
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.rcard .big span{font-size:13px;color:var(--text-3);margin-bottom:7px}
+.rcard .lines{margin-top:12px;padding-top:10px;border-top:1px solid rgba(212,175,55,.22)}
+.rcard .lines .r{display:flex;justify-content:space-between;align-items:center;
+  font-size:12px;color:var(--text-2);letter-spacing:.5px;height:22px}
+.rcard .lines .r b{color:var(--gold-300);font-weight:500;letter-spacing:.3px}
+.rcard .lines .r.miss span,.rcard .lines .r.miss b{color:var(--text-3)}
+
+/* 皮肤对照小卡（8 款） */
+.skins8{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.sk8{position:relative;border-radius:4px;overflow:hidden;height:76px;
+  background:var(--t-paper);border:.8px solid var(--t-border);
+  box-shadow:0 2px 0 rgba(0,0,0,.4), 0 6px 12px rgba(0,0,0,.4)}
+.sk8 .band8{position:absolute;left:2.4px;right:2.4px;top:2.4px;height:4px;background:var(--t-primary);opacity:.85}
+.sk8 .nm8{position:absolute;left:0;right:0;top:13px;text-align:center;font-size:12px;font-weight:700;
+  color:var(--t-title);letter-spacing:-.3px;text-shadow:0 .6px 0 rgba(255,255,255,.5)}
+.sk8 .lb8{position:absolute;left:0;right:0;bottom:4px;text-align:center;font-size:7.5px;
+  color:var(--t-num);opacity:.6;letter-spacing:.5px}
+.sk8 .fo8{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+  width:26px;height:14px;border-radius:1px;
+  background:linear-gradient(108deg,#D9DEE5,#C0C7D1 58%,#98A0AC);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6)}
+.sk8.cold .fo8{background:linear-gradient(108deg,#E3EBF1,#C6D2DC 58%,#9FAEBC)}
+.sk8.dark .fo8{background:linear-gradient(108deg,#9A8A62,#6E6349 58%,#4B4436)}
+.sk8 .tag8{display:none}
 </style>
 </head>
 <body>
@@ -568,12 +948,12 @@ body{
 <div class="topbar">
   <div class="brand">
     <b>好运游戏厅</b>
-    <span>纸感印刷 × 暖金暗场 × 三套票面皮肤</span>
+    <span>纸感印刷 × 暖金暗场 × 八款票面皮肤</span>
   </div>
   <div class="meta">
     <span>竖屏 390×844 ｜ 逻辑 360×640dp ｜ 纯 NanoVG 可绘制</span>
-    <span class="pill-num">数值为 v2.0 演示口径</span>
-    <span class="pill-ver">art-bible v2.0</span>
+    <span class="pill-num">数值为 GDD v2.0 口径</span>
+    <span class="pill-ver">art-bible v2.1 · 8 屏</span>
   </div>
 </div>
 
@@ -588,13 +968,26 @@ body{
 </div>
 <div class="palette-cap">INK · GOLD · RED · GREEN · PAPER · NEON</div>
 
+<!-- 8 款皮肤色带（art-bible §11） -->
+<div class="palette skins" style="margin-top:18px">
+  <i style="background:#BE3A2B;border-bottom:6px solid #F5EBD3"></i>
+  <i style="background:#1F5C46;border-bottom:6px solid #F2EAD8"></i>
+  <i style="background:#C8102E;border-bottom:6px solid #F7EFDF"></i>
+  <i style="background:#B3242C;border-bottom:6px solid #F6E8DE"></i>
+  <i style="background:#A65A32;border-bottom:6px solid #EADFC8"></i>
+  <i style="background:#3C6E8F;border-bottom:6px solid #F0F3F4"></i>
+  <i style="background:#1D6E63;border-bottom:6px solid #F1EBD9"></i>
+  <i style="background:#D4AF37;border-bottom:6px solid #1C1917"></i>
+</div>
+<div class="palette-cap">S1 晨光 · S2 雨后 · S3 烫金 · S4 丝绒 · S5 夜光 · S6 霜花 · S7 合符 · S8 鎏夜</div>
+
 <div class="stage">
 
   <!-- ============================================================
        ① 大厅
        ============================================================ -->
   <div class="frame">
-    <div class="cap"><i>01</i><b>大厅</b><span>默认入口 · 三套皮肤并列展示</span></div>
+    <div class="cap"><i>01</i><b>大厅</b><span>默认入口 · 八款皮肤并列展示</span></div>
     <div class="phone">
       <div class="screen">
         <div class="layer">
@@ -620,11 +1013,11 @@ body{
 
             <div class="sec"><h2>今日可玩</h2><span class="ln"></span><span class="tag">限时</span></div>
 
-            <!-- 体彩（主打） -->
-            <div class="tcard s-ticai">
+            <!-- S7 合符（主推 · 多格旗舰） -->
+            <div class="tcard s7">
               <div class="tc-main">
-                <h3><em class="hb">主推</em>好运十倍<span class="lv">Lv.2</span></h3>
-                <p>体彩 · 顶呱刮<span class="dot">·</span>中奖率 45%</p>
+                <h3><em class="hb">主推</em>合符<span class="lv">Lv.2</span></h3>
+                <p>锦鲤 · 十六格<span class="dot">·</span>命中率 45%</p>
               </div>
               <div class="tc-cut"></div>
               <div class="tc-price">
@@ -634,25 +1027,25 @@ body{
               <div class="tc-buy">买票</div>
             </div>
 
-            <!-- 福彩 -->
-            <div class="tcard s-fucai">
+            <!-- S2 雨后 -->
+            <div class="tcard s2">
               <div class="tc-main">
-                <h3>晨光<span class="lv">Lv.1</span></h3>
-                <p>福彩 · 经典<span class="dot">·</span>中奖率 35%</p>
+                <h3>雨后<span class="lv">Lv.1</span></h3>
+                <p>国潮 · 描金<span class="dot">·</span>命中率 41%</p>
               </div>
               <div class="tc-cut"></div>
               <div class="tc-price">
-                <div class="p">100<small>币</small></div>
+                <div class="p">400<small>币</small></div>
                 <div class="u">不限量</div>
               </div>
               <div class="tc-buy">买票</div>
             </div>
 
-            <!-- HOT -->
-            <div class="tcard s-hot">
+            <!-- S8 鎏夜 -->
+            <div class="tcard s8">
               <div class="tc-main">
-                <h3>热力</h3>
-                <p>美式 · HOT<span class="dot">·</span>中奖率 32%</p>
+                <h3>鎏夜</h3>
+                <p>黑金 · 暗纹<span class="dot">·</span>命中率 32%</p>
               </div>
               <div class="tc-cut"></div>
               <div class="tc-price">
@@ -679,8 +1072,8 @@ body{
             <div class="sec"><h2>今日战绩</h2><span class="ln"></span><span class="tag">已更新</span></div>
             <div class="stats">
               <div class="st"><b>12</b><span>已刮张数</span></div>
-              <div class="st"><b>4</b><span>中奖次数</span></div>
-              <div class="st"><b>128,600</b><span>累计票房</span></div>
+              <div class="st"><b>4</b><span>命中次数</span></div>
+              <div class="st"><b>128,600</b><span>累计兑付</span></div>
             </div>
           </div>
 
@@ -697,10 +1090,10 @@ body{
   </div>
 
   <!-- ============================================================
-       ② 刮卡页 · 体彩顶呱刮
+       ② 刮卡页 · 烫金（v2.1 真实票面解剖）
        ============================================================ -->
   <div class="frame">
-    <div class="cap"><i>02</i><b>刮卡页 · 好运十倍</b><span>主打皮肤 · 含刮层质感</span></div>
+    <div class="cap"><i>02</i><b>刮卡页 · 烫金</b><span>S3 中国红烫箔 · L10 十格 · 八层解剖</span></div>
     <div class="phone">
       <div class="screen">
         <div class="layer">
@@ -714,83 +1107,139 @@ body{
 
           <div class="topnav">
             <div class="back"><i></i></div>
-            <h2>好运十倍</h2>
+            <h2>烫金</h2>
             <div class="act">规则</div>
           </div>
 
           <div class="scratch-body">
-            <div class="ticket">
-              <div class="grain"></div>
 
-              <div class="tk-head">
-                <div class="kicker">顶呱刮 · 即开型</div>
-                <div class="row">
-                  <h3>好运十倍</h3>
-                  <div class="denom"><b>200</b><span>币</span></div>
+            <!-- ===== 票面：8 层 ===== -->
+            <div class="tk s3 dense">
+              <div class="paper"></div>
+
+              <!-- 第2层 框 -->
+              <div class="tframe">
+                <div class="band top">
+                  <svg viewBox="0 0 348 9" preserveAspectRatio="none">
+                    <defs>
+                      <pattern id="fret3a" width="8" height="9" patternUnits="userSpaceOnUse">
+                        <path d="M1 8 L1 1 L7 1 L7 5.4 L3 5.4 L3 3.4 L5 3.4" fill="none" stroke="#C8102E" stroke-width="1.2"/>
+                      </pattern>
+                      <pattern id="fret3b" width="8" height="9" patternUnits="userSpaceOnUse">
+                        <path d="M1 8 L1 1 L7 1 L7 5.4 L3 5.4 L3 3.4 L5 3.4" fill="none" stroke="#D4AF37" stroke-width=".7" transform="translate(4 0)"/>
+                      </pattern>
+                    </defs>
+                    <rect width="348" height="9" fill="url(#fret3a)"/>
+                    <rect width="348" height="9" fill="url(#fret3b)"/>
+                  </svg>
                 </div>
-                <div class="serial">NO. 20261106-0417</div>
-              </div>
-              <div class="tk-green"></div>
-
-              <div class="tk-win">
-                <div class="lb">中奖号码<em>WINNING</em></div>
-                <div class="num"><b>23</b></div>
-                <div class="hint">刮出相同号码<br><b>即中</b>下方奖金</div>
-              </div>
-
-              <div class="grid">
-                <div class="cell foil"><span>刮</span></div>
-                <!-- 命中 + 十倍：100 × 10 = 1,000（与结算页一致） -->
-                <div class="cell open hit">
-                  <span class="n">23</span>
-                  <span class="pz">100<small>币</small></span>
-                  <span class="seal">中</span>
-                  <span class="mt">×10</span>
+                <div class="band bot">
+                  <svg viewBox="0 0 348 9" preserveAspectRatio="none">
+                    <rect width="348" height="9" fill="url(#fret3a)"/>
+                    <rect width="348" height="9" fill="url(#fret3b)"/>
+                  </svg>
                 </div>
-
-                <div class="cell open">
-                  <span class="n">17</span>
-                  <span class="pz">40<small>币</small></span>
-                </div>
-                <div class="cell foil"><span>刮</span></div>
-
-                <div class="cell open">
-                  <span class="n">08</span>
-                  <span class="pz">100<small>币</small></span>
-                </div>
-                <div class="cell foil"><span>刮</span></div>
-
-                <div class="cell foil"><span>刮</span></div>
-                <div class="cell foil"><span>刮</span></div>
-
-                <div class="cell foil"><span>刮</span></div>
-                <div class="cell foil"><span>刮</span></div>
+                <svg class="co tl" viewBox="0 0 16 16"><path d="M0 14 C0 6 6 0 14 0"/><path d="M14 0 A5.5 5.5 0 0 1 8.5 5.5" stroke-width=".9"/><circle cx="12" cy="4" r="1.4" fill="#D4AF37" stroke="none"/></svg>
+                <svg class="co tr" viewBox="0 0 16 16"><path d="M0 14 C0 6 6 0 14 0"/><path d="M14 0 A5.5 5.5 0 0 1 8.5 5.5" stroke-width=".9"/><circle cx="12" cy="4" r="1.4" fill="#D4AF37" stroke="none"/></svg>
+                <svg class="co bl" viewBox="0 0 16 16"><path d="M0 14 C0 6 6 0 14 0"/><path d="M14 0 A5.5 5.5 0 0 1 8.5 5.5" stroke-width=".9"/><circle cx="12" cy="4" r="1.4" fill="#D4AF37" stroke="none"/></svg>
+                <svg class="co br" viewBox="0 0 16 16"><path d="M0 14 C0 6 6 0 14 0"/><path d="M14 0 A5.5 5.5 0 0 1 8.5 5.5" stroke-width=".9"/><circle cx="12" cy="4" r="1.4" fill="#D4AF37" stroke="none"/></svg>
               </div>
 
-              <div class="tk-foot">
-                <div class="bc"></div>
-                <div class="sn">身 份 码 6 2 1 1 0 6</div>
+              <div class="in">
+                <!-- 第3层 票名压印 -->
+                <div class="kick">刮 刮 乐 · 即 开 型</div>
+                <div class="rulename"><div class="name gold">烫金</div></div>
+                <div class="sub">面额 1,600 币 · 十格 · 最高 480,000 币</div>
+
+                <!-- 第4层 玩法说明 -->
+                <div class="rule">
+                  <i></i>
+                  <p>号码与对照号相同，即得该号下方奖金<br>出现<b> 合 </b>符 · 本票全部收下</p>
+                </div>
+
+                <!-- 第5层 对照号 -->
+                <div class="win">
+                  <div class="lb">对 照 号</div>
+                  <div class="wrow">
+                    <div class="wbox"><b>07</b></div>
+                    <div class="wbox"><b>23</b></div>
+                    <div class="wbox"><b>38</b></div>
+                  </div>
+                </div>
+
+                <!-- 第6层 号码格 L10 2×5 + 第7层 刮层 -->
+                <div class="grid" style="grid-template-columns:repeat(2,1fr)">
+                  <div class="cell foil"><em>刮</em></div>
+
+                  <div class="cell hit">
+                    <span class="n">07</span><span class="pz">1,600<s>币</s></span>
+                    <span class="seal">中</span>
+                  </div>
+
+                  <div class="cell"><span class="n">12</span><span class="pz">480<s>币</s></span></div>
+                  <div class="cell"><span class="n">45</span><span class="pz">720<s>币</s></span></div>
+
+                  <div class="cell hit">
+                    <span class="n">23</span><span class="pz">11,200<s>币</s></span>
+                    <span class="seal">中</span>
+                  </div>
+                  <div class="cell foil"><em>刮</em></div>
+
+                  <!-- 半刮：毛边 + 残留银粉雾 + 刃痕 -->
+                  <div class="cell part a">
+                    <span class="n">38</span><span class="pz">3,200<s>币</s></span>
+                    <span class="foilrem"></span>
+                    <span class="scr"><i></i><i></i></span>
+                  </div>
+                  <div class="cell foil"><em>刮</em></div>
+
+                  <div class="cell"><span class="n">09</span><span class="pz">480<s>币</s></span></div>
+                  <div class="cell foil"><em>刮</em></div>
+                </div>
+
+                <!-- 第8层 票根 -->
+                <div class="stub">
+                  <div class="row">
+                    <div class="bc"></div>
+                    <div class="sn">NO.20261106 0417 8832</div>
+                    <div class="dots">
+                      <i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i>
+                      <i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i>
+                      <i></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i>
+                      <i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i>
+                      <i class="o"></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i>
+                      <i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i>
+                      <i></i><i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i>
+                    </div>
+                    <div class="guard">刮开<br>无效</div>
+                  </div>
+                  <div class="micro">GUOYUN YOUXITING · NOPRIZE 1600-0417 · ZGFC</div>
+                </div>
               </div>
             </div>
 
-            <div class="prog-wrap">
-              <div class="prog"><i style="width:30%"></i></div>
-              <span>已刮 3 / 10</span>
+            <div class="tickbar">
+              <div class="ticks">
+                <i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i>
+                <i class="done"></i><i class="done"></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+              <span>6 / 10</span>
             </div>
 
-            <div class="rulebar">
-              <span>号码与中奖号码相同 · 即中下方奖金</span>
-              <span class="sp"></span>
-              <span>出现<b>×10</b>翻十倍</span>
+            <!-- 刮刀三档 -->
+            <div class="toolbar">
+              <div class="tool"><span class="shape sp-finger"></span><span class="lb">指刮</span></div>
+              <div class="tool on"><span class="shape sp-bone"></span><span class="lb">骨刮</span></div>
+              <div class="tool"><span class="shape sp-copper"></span><span class="lb">铜铲</span></div>
             </div>
 
             <div class="actions">
               <div class="btn btn-ghost">全部刮开</div>
-              <div class="btn btn-ad"><span class="play"></span>看广告 ×2 领取</div>
+              <div class="btn btn-ad"><span class="play"></span>看广告 再领一份</div>
             </div>
 
-            <div class="hintline">本票期望产出 1,600 币 · 已中 1 注</div>
-          </div>
+            <div class="hintline">已中 2 格 · 合计 12,800 币 · 剩 3 格未刮</div>          </div>
 
           <div class="homebar" style="margin-top:auto"><i></i></div>
         </div>
@@ -799,10 +1248,10 @@ body{
   </div>
 
   <!-- ============================================================
-       ③ 开奖结算
+       ③ 揭晓结算
        ============================================================ -->
   <div class="frame">
-    <div class="cap"><i>03</i><b>开奖结算 · 大奖</b><span>金票 + 彩纸 + ×10 倍率</span></div>
+    <div class="cap"><i>03</i><b>揭晓结算 · 大奖</b><span>金票 + 彩纸 + ×10 倍率</span></div>
     <div class="phone">
       <div class="screen win-screen">
         <div class="win-mask"></div>
@@ -850,24 +1299,24 @@ body{
           </div>
 
           <div class="win-body">
-            <div class="win-top">今 日 第 3 次 中 奖</div>
+            <div class="win-top">今 日 第 3 次 命 中</div>
 
             <div class="goldcard">
               <div class="mult">×10 十倍</div>
-              <div class="gc-kicker">好 运 十 倍</div>
-              <h3>中奖啦</h3>
+              <div class="gc-kicker">合 符 · 锦 鲤</div>
+              <h3>中 了</h3>
               <div class="amt"><b>1,000</b><span>币</span></div>
               <div class="divider"></div>
               <div class="note">
-                第 2 注命中「23」 · 基础 100 币<br>
-                触发 <b>十倍</b> · 100 × 10 = 1,000 币
+                第 2 格命中「23」 · 基础 100 币<br>
+                触发 <b>×10</b> · 100 × 10 = 1,000 币
               </div>
             </div>
 
             <div class="win-actions">
               <div class="btn btn-solid">收入囊中</div>
-              <div class="btn btn-ad full"><span class="play"></span>看广告 ×2 领取</div>
-              <div class="win-foot">再刮 2 张即可升级 好运十倍 Lv.3</div>
+              <div class="btn btn-ad full"><span class="play"></span>看广告 再领一份</div>
+              <div class="win-foot">再刮 2 张即可升级 合符 Lv.3</div>
             </div>
           </div>
 
@@ -949,10 +1398,10 @@ body{
   </div>
 
   <!-- ============================================================
-       ⑤ 三套皮肤对照
+       ⑤ 八款皮肤对照
        ============================================================ -->
   <div class="frame">
-    <div class="cap"><i>05</i><b>三套票面皮肤对照</b><span>关闭颜色后仍可区分</span></div>
+    <div class="cap"><i>05</i><b>八款票面皮肤</b><span>关掉颜色后仍能两两区分</span></div>
     <div class="phone">
       <div class="screen">
         <div class="layer">
@@ -970,73 +1419,473 @@ body{
             <div class="act">说明</div>
           </div>
 
-          <div class="skin-body">
+          <div style="flex:1;padding:0 16px;overflow:hidden">
+            <div class="skins8">
+              <div class="sk8 s1"><div class="band8"></div><span class="tag8">生肖</span><div class="nm8">晨光</div><div class="fo8"></div><div class="lb8">100 币</div></div>
+              <div class="sk8 s2"><div class="band8"></div><span class="tag8">国潮</span><div class="nm8">雨后</div><div class="fo8"></div><div class="lb8">400 币</div></div>
+              <div class="sk8 s3"><div class="band8"></div><span class="tag8">中国红</span><div class="nm8">烫金</div><div class="fo8"></div><div class="lb8">1,600 币</div></div>
+              <div class="sk8 s4"><div class="band8"></div><span class="tag8">囍事</span><div class="nm8">丝绒</div><div class="fo8"></div><div class="lb8">6,000 币</div></div>
+              <div class="sk8 s5"><div class="band8"></div><span class="tag8">敦煌</span><div class="nm8">夜光</div><div class="fo8"></div><div class="lb8">24,000 币</div></div>
+              <div class="sk8 s6 cold"><div class="band8"></div><span class="tag8">冰雪</span><div class="nm8">霜花</div><div class="fo8"></div><div class="lb8">100,000 币</div></div>
+              <div class="sk8 s7"><div class="band8"></div><span class="tag8">锦鲤</span><div class="nm8">合符</div><div class="fo8"></div><div class="lb8">200 币</div></div>
+              <div class="sk8 s8 dark"><div class="band8"></div><span class="tag8">黑金</span><div class="nm8">鎏夜</div><div class="fo8"></div><div class="lb8">4,000 币</div></div>
+            </div>
 
-            <!-- 福彩 -->
-            <div class="skin-item">
-              <div class="lab"><b>福彩系</b><span>红金 · 拱形匾额 · 旧纸</span><i>中频</i></div>
-              <div class="st-fucai">
-                <div class="plaque">
-                  <span class="pmark">福</span>
-                  <b>晨光</b>
-                  <span class="pden">100 币</span>
+            <div class="note-box" style="margin-top:12px">
+              <b>区分依据（不看颜色）：</b><em>晨光</em>菱形窗花带 · <em>雨后</em>几何回纹 · <em>烫金</em>双相位回纹＋金标题 ·
+              <em>丝绒</em>四角「喜」字＋点阵绒面 · <em>夜光</em>三层同心角花＋双色错版 · <em>霜花</em>六角冰晶＋断口格框 ·
+              <em>合符</em>水波双鳞＋角上印点 · <em>鎏夜</em>深底＋L 形金直角。<br>
+              八个特征分布在「带纹 / 角花 / 标题 / 底色」四个不同部位，不是靠同一维度变颜色。
+            </div>
+
+            <div class="cmp" style="margin-top:10px">
+              <div class="row head" style="grid-template-columns:56px 1fr 1fr 1fr">
+                <span>皮肤</span><span>主题</span><span>角花</span><span>涂层</span>
+              </div>
+              <div class="row" style="grid-template-columns:56px 1fr 1fr 1fr"><span>晨光</span><span>生肖剪纸</span><span>1/4 窗花</span><span>亮银</span></div>
+              <div class="row" style="grid-template-columns:56px 1fr 1fr 1fr"><span>雨后</span><span>墨绿描金</span><span>卷草</span><span>亮银</span></div>
+              <div class="row" style="grid-template-columns:56px 1fr 1fr 1fr"><span>烫金</span><span>中国红</span><span>如意头</span><span>亮银</span></div>
+              <div class="row" style="grid-template-columns:56px 1fr 1fr 1fr"><span>丝绒</span><span>节庆囍事</span><span>「喜」字</span><span>哑银</span></div>
+              <div class="row" style="grid-template-columns:56px 1fr 1fr 1fr"><span>夜光</span><span>敦煌藻井</span><span>三层同心</span><span>哑银</span></div>
+              <div class="row" style="grid-template-columns:56px 1fr 1fr 1fr"><span>霜花</span><span>冰雪冰裂</span><span>1/4 冰晶</span><span>冷银</span></div>
+              <div class="row" style="grid-template-columns:56px 1fr 1fr 1fr"><span>合符</span><span>锦鲤水波</span><span>鱼尾</span><span>亮银</span></div>
+              <div class="row" style="grid-template-columns:56px 1fr 1fr 1fr"><span>鎏夜</span><span>黑金暗纹</span><span>L 直角</span><span>暗金</span></div>
+            </div>
+
+            <div class="note-box" style="margin-top:10px">
+              <b>票名全部原创</b>，已与 298 个真实票种逐条比对，无重合。<br>
+              「合符」取唐代鱼符制度——鱼形信物一剖为二、两半相合为验，正是「对照号 vs 我的号码」的古代原型。
+            </div>
+          </div>
+
+          <div class="homebar"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       ⑥ 票柜（柜台屏 · 新增）
+       ============================================================ -->
+  <div class="frame">
+    <div class="cap"><i>06</i><b>票柜 · 柜台</b><span>8 款在售 · 横滑 · 批量 1/10/50/100</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="layer">
+          <div class="statusbar">
+            <span>10:41</span>
+            <span style="display:flex;align-items:center">
+              <span class="sig"><b></b><b></b><b></b></span>
+              <span class="batt"></span>
+            </span>
+          </div>
+
+          <div class="topnav">
+            <div class="back"><i></i></div>
+            <h2>票柜</h2>
+            <div class="act">说明</div>
+          </div>
+
+          <div style="flex:1;padding:0 16px;overflow:hidden">
+            <div class="hud" style="margin-top:0">
+              <div class="chip-cur"><span class="coin"></span><b>148,200</b></div>
+              <div class="chip-cur dim"><span class="gem"></span><b>3,200</b></div>
+              <div class="chip-cur dim"><span class="tkt"></span><b>8</b></div>
+            </div>
+
+            <div class="free" style="margin-top:12px">
+              <span class="ic"></span>
+              <span class="tx">下张免费票</span>
+              <span class="cd">02:47</span>
+              <span class="pg"></span>
+            </div>
+
+            <div class="sec" style="margin:18px 0 6px">
+              <h2>今日在售</h2><span class="ln"></span><span class="tag">8 款</span>
+            </div>
+
+            <!-- 8 款缩略图，横向滚动（可见 3.2 张） -->
+            <div class="shelf">
+
+              <div class="thumb s1">
+                <div class="mini"><div class="bt"></div><div class="nm">晨光</div>
+                  <div class="ln" style="top:26px;width:58%"></div>
+                  <div class="ln" style="top:30px;width:42%"></div>
+                  <div class="ln" style="top:34px;width:50%"></div>
+                  <div class="fo" style="left:7px;top:50px"></div>
+                  <div class="fo" style="left:35px;top:50px"></div>
+                  <div class="bc2"></div></div>
+                <div class="tn">晨光</div><div class="tp">100<small>币</small></div>
+                <div class="tm">最高 12,000</div>
+              </div>
+
+              <div class="thumb s7">
+                <div class="mini"><div class="bt"></div><div class="nm">合符</div>
+                  <div class="ln" style="top:26px;width:58%"></div>
+                  <div class="ln" style="top:30px;width:42%"></div>
+                  <div class="ln" style="top:34px;width:50%"></div>
+                  <div class="fo" style="left:7px;top:50px"></div>
+                  <div class="fo" style="left:35px;top:50px"></div>
+                  <div class="bc2"></div></div>
+                <div class="tn">合符</div><div class="tp">200<small>币</small></div>
+                <div class="tm">最高 8,000</div>
+              </div>
+
+              <div class="thumb s2">
+                <div class="mini"><div class="bt"></div><div class="nm">雨后</div>
+                  <div class="ln" style="top:26px;width:58%"></div>
+                  <div class="ln" style="top:30px;width:42%"></div>
+                  <div class="ln" style="top:34px;width:50%"></div>
+                  <div class="fo" style="left:7px;top:50px"></div>
+                  <div class="fo" style="left:35px;top:50px"></div>
+                  <div class="bc2"></div></div>
+                <div class="tn">雨后</div><div class="tp">400<small>币</small></div>
+                <div class="tm">最高 80,000</div>
+              </div>
+
+              <div class="thumb on s3">
+                <div class="mini"><div class="bt"></div><div class="nm">烫金</div>
+                  <div class="ln" style="top:26px;width:58%"></div>
+                  <div class="ln" style="top:30px;width:42%"></div>
+                  <div class="ln" style="top:34px;width:50%"></div>
+                  <div class="fo" style="left:7px;top:50px"></div>
+                  <div class="fo" style="left:35px;top:50px"></div>
+                  <div class="bc2"></div></div>
+                <div class="tn">烫金</div><div class="tp">1,600<small>币</small></div>
+                <div class="tm">最高 480,000</div>
+              </div>
+
+              <div class="thumb s8">
+                <div class="mini"><div class="bt"></div><div class="nm">鎏夜</div>
+                  <div class="ln" style="top:26px;width:58%"></div>
+                  <div class="ln" style="top:30px;width:42%"></div>
+                  <div class="ln" style="top:34px;width:50%"></div>
+                  <div class="fo" style="left:7px;top:50px"></div>
+                  <div class="fo" style="left:35px;top:50px"></div>
+                  <div class="bc2"></div></div>
+                <div class="tn">鎏夜</div><div class="tp">4,000<small>币</small></div>
+                <div class="tm">最高 8,000</div>
+              </div>
+
+              <div class="thumb s4">
+                <div class="mini"><div class="bt"></div><div class="nm">丝绒</div>
+                  <div class="ln" style="top:26px;width:58%"></div>
+                  <div class="ln" style="top:30px;width:42%"></div>
+                  <div class="ln" style="top:34px;width:50%"></div>
+                  <div class="fo" style="left:7px;top:50px"></div>
+                  <div class="fo" style="left:35px;top:50px"></div>
+                  <div class="bc2"></div></div>
+                <div class="tn">丝绒</div><div class="tp">6,000<small>币</small></div>
+                <div class="tm">最高 3,000,000</div>
+              </div>
+
+              <div class="thumb s5">
+                <div class="mini"><div class="bt"></div><div class="nm">夜光</div>
+                  <div class="ln" style="top:26px;width:58%"></div>
+                  <div class="ln" style="top:30px;width:42%"></div>
+                  <div class="ln" style="top:34px;width:50%"></div>
+                  <div class="fo" style="left:7px;top:50px"></div>
+                  <div class="fo" style="left:35px;top:50px"></div>
+                  <div class="bc2"></div></div>
+                <div class="tn">夜光</div><div class="tp">24,000<small>币</small></div>
+                <div class="tm">最高 18,000,000</div>
+              </div>
+
+              <div class="thumb lock s6">
+                <div class="mini"><div class="bt"></div><div class="nm">霜花</div>
+                  <div class="ln" style="top:26px;width:58%"></div>
+                  <div class="ln" style="top:30px;width:42%"></div>
+                  <div class="ln" style="top:34px;width:50%"></div>
+                  <div class="fo" style="left:7px;top:50px"></div>
+                  <div class="fo" style="left:35px;top:50px"></div>
+                  <div class="bc2"></div></div>
+                <div class="tn">霜花</div><div class="tp">连登 3 天</div>
+                <div class="tm">最高 100,000,000</div>
+              </div>
+
+            </div>
+
+            <!-- 选中票种信息 -->
+            <div style="display:flex;align-items:baseline;gap:8px;margin-top:14px">
+              <span style="font-size:15px;color:var(--text);letter-spacing:1px">烫金</span>
+              <span style="font-size:10px;color:var(--text-3);letter-spacing:.5px">中国红烫箔 · 十格 · 已刮 12 张</span>
+              <span class="pill-ver" style="margin-left:auto;font-size:9px;padding:2px 7px">RTP 1.80</span>
+            </div>
+
+            <!-- 批量购买 -->
+            <div class="batch">
+              <div class="seg">
+                <i>1</i><i class="on">10</i><i>50</i><i>100</i>
+              </div>
+              <div class="sum">16,000<small>币</small></div>
+            </div>
+
+            <div class="prog-wrap" style="margin-top:12px">
+              <div class="prog"><i style="width:23%"></i></div>
+              <span>今日配额 7 / 30</span>
+            </div>
+
+            <div class="stats" style="margin-top:14px">
+              <div class="st"><b>7</b><span>今日已买</span></div>
+              <div class="st"><b>4</b><span>本票已中</span></div>
+              <div class="st"><b>32/40</b><span>手气槽</span></div>
+            </div>
+
+            <div class="hintline" style="margin-top:10px">再买 2 张 · 得一张运势券</div>
+
+            <div class="actions" style="margin-top:12px">
+              <div class="btn btn-ghost" style="width:96px">详情</div>
+              <div class="btn btn-gold">买 10 张 · 16,000 币</div>
+            </div>
+
+            <div class="hintline">薄薄一张纸 · 刮开才知道</div>
+
+            <div class="note-box" style="margin-top:14px">
+              <b>柜台 Lv.2</b> · 每 3 分钟补 1 张免费票 · 今日已补 9 次<br>
+              未解锁的票种仍在柜里，<em>压在最下层</em>，看得见拿不到。
+            </div>
+          </div>
+
+          <div class="homebar"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       ⑦ 多格票面特写（雨后 · 16 格 · 新增）
+       ============================================================ -->
+  <div class="frame">
+    <div class="cap"><i>07</i><b>多格票面特写 · 雨后</b><span>16 格 · 未刮/半刮/已刮 三态并存</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="layer">
+          <div class="statusbar">
+            <span>10:47</span>
+            <span style="display:flex;align-items:center">
+              <span class="sig"><b></b><b></b><b></b></span>
+              <span class="batt"></span>
+            </span>
+          </div>
+
+          <div class="topnav">
+            <div class="back"><i></i></div>
+            <h2>雨后</h2>
+            <div class="act">规则</div>
+          </div>
+
+          <div class="scratch-body">
+
+            <div class="tk s2">
+              <div class="paper"></div>
+
+              <div class="tframe">
+                <div class="band top">
+                  <svg viewBox="0 0 348 9" preserveAspectRatio="none">
+                    <defs>
+                      <pattern id="fret2" width="8" height="9" patternUnits="userSpaceOnUse">
+                        <path d="M1 8 L1 1 L7 1 L7 5.4 L3 5.4 L3 3.4 L5 3.4" fill="none" stroke="#1F5C46" stroke-width="1"/>
+                      </pattern>
+                    </defs>
+                    <rect width="348" height="9" fill="url(#fret2)"/>
+                    <rect x="0" y="8.2" width="348" height=".5" fill="#B99048" opacity=".85"/>
+                  </svg>
                 </div>
-                <div class="inner">
-                  <div class="sq">福</div>
-                  <div class="sq">禄</div>
-                  <div class="sq">寿</div>
-                  <div style="flex:1;text-align:right;font-size:9px;color:var(--ink-paper-2);line-height:1.6">
-                    圆角 12 · 云纹<br>哑光银涂层
+                <div class="band bot">
+                  <svg viewBox="0 0 348 9" preserveAspectRatio="none">
+                    <rect width="348" height="9" fill="url(#fret2)"/>
+                    <rect x="0" y="0.3" width="348" height=".5" fill="#B99048" opacity=".85"/>
+                  </svg>
+                </div>
+                <svg class="co tl" viewBox="0 0 16 16" style="stroke:#1F5C46">
+                  <path d="M0 14 C0 6 6 0 14 0"/><path d="M2.6 14 C2.6 8 8 2.6 14 2.6" stroke-width=".7"/>
+                  <path d="M6.2 6.2 a2.6 2.6 0 1 1 2.6 2.6" stroke-width=".7"/>
+                  <circle cx="6.2" cy="6.2" r=".9" fill="#B99048" stroke="none"/></svg>
+                <svg class="co tr" viewBox="0 0 16 16" style="stroke:#1F5C46">
+                  <path d="M0 14 C0 6 6 0 14 0"/><path d="M2.6 14 C2.6 8 8 2.6 14 2.6" stroke-width=".7"/>
+                  <path d="M6.2 6.2 a2.6 2.6 0 1 1 2.6 2.6" stroke-width=".7"/>
+                  <circle cx="6.2" cy="6.2" r=".9" fill="#B99048" stroke="none"/></svg>
+                <svg class="co bl" viewBox="0 0 16 16" style="stroke:#1F5C46">
+                  <path d="M0 14 C0 6 6 0 14 0"/><path d="M2.6 14 C2.6 8 8 2.6 14 2.6" stroke-width=".7"/>
+                  <path d="M6.2 6.2 a2.6 2.6 0 1 1 2.6 2.6" stroke-width=".7"/>
+                  <circle cx="6.2" cy="6.2" r=".9" fill="#B99048" stroke="none"/></svg>
+                <svg class="co br" viewBox="0 0 16 16" style="stroke:#1F5C46">
+                  <path d="M0 14 C0 6 6 0 14 0"/><path d="M2.6 14 C2.6 8 8 2.6 14 2.6" stroke-width=".7"/>
+                  <path d="M6.2 6.2 a2.6 2.6 0 1 1 2.6 2.6" stroke-width=".7"/>
+                  <circle cx="6.2" cy="6.2" r=".9" fill="#B99048" stroke="none"/></svg>
+              </div>
+
+              <div class="in">
+                <div class="kick">刮 刮 乐 · 即 开 型</div>
+                <div class="rulename">
+                  <div class="name" style="text-shadow:1px 1px 0 #B99048, 0 .7px 0 rgba(255,255,255,.5)">雨后</div>
+                </div>
+                <div class="sub">面额 400 币 · 拾陆格 · 最高 80,000 币</div>
+
+                <div class="rule">
+                  <i></i>
+                  <p>号码与对照号相同，即得该号下方奖金<br>十二格以上同号 · 额外<b> 描金 </b>一份</p>
+                </div>
+
+                <div class="win">
+                  <div class="lb">对 照 号</div>
+                  <div class="wrow">
+                    <div class="wbox"><b>07</b></div>
+                    <div class="wbox"><b>23</b></div>
+                    <div class="wbox"><b>38</b></div>
                   </div>
                 </div>
-                <div class="foo">中 国 福 利 彩 票</div>
-              </div>
-            </div>
 
-            <!-- 体彩 -->
-            <div class="skin-item">
-              <div class="lab"><b>体彩顶呱刮系</b><span>红绿白 · 表格栅格 · 新纸</span><i>主打</i></div>
-              <div class="st-ticai">
-                <div class="band">
-                  <div class="kk">顶呱刮 · 即开型</div>
-                  <b>好运十倍</b>
-                  <span class="dn">200 币</span>
-                </div>
-                <div class="gline"></div>
-                <div class="cells">
-                  <i>刮</i><i>刮</i><i>刮</i>
-                  <i>刮</i><i class="on">23</i><i>刮</i>
-                </div>
-              </div>
-            </div>
+                <div class="grid c4" style="grid-auto-rows:46px">
+                  <div class="cell foil"><em>刮</em></div>
+                  <div class="cell hit"><span class="n">07</span><span class="pz">2,400<s>币</s></span><span class="seal">中</span></div>
+                  <div class="cell"><span class="n">15</span><span class="pz">720<s>币</s></span></div>
+                  <div class="cell part a"><span class="n">26</span><span class="pz">720<s>币</s></span><span class="foilrem"></span><span class="scr"><i></i><i></i></span></div>
 
-            <!-- HOT -->
-            <div class="skin-item">
-              <div class="lab"><b>HOT 系</b><span>霓虹 · 斜切速度线 · 深紫黑</span><i>低频</i></div>
-              <div class="st-hot">
-                <div class="in">
-                  <h4>热力</h4>
-                  <div class="sub">H O T · S C R A T C H</div>
+                  <div class="cell"><span class="n">39</span><span class="pz">720<s>币</s></span></div>
+                  <div class="cell foil"><em>刮</em></div>
+                  <div class="cell part b"><span class="n">09</span><span class="pz">720<s>币</s></span><span class="foilrem"></span><span class="scr"><i></i><i></i></span></div>
+                  <div class="cell"><span class="n">42</span><span class="pz">400<s>币</s></span></div>
+
+                  <div class="cell foil"><em>刮</em></div>
+                  <div class="cell hit"><span class="n">23</span><span class="pz">10,000<s>币</s></span><span class="seal">中</span></div>
+                  <div class="cell part c"><span class="n">31</span><span class="pz">720<s>币</s></span><span class="foilrem"></span><span class="scr"><i></i><i></i></span></div>
+                  <div class="cell foil"><em>刮</em></div>
+
+                  <div class="cell"><span class="n">11</span><span class="pz">400<s>币</s></span></div>
+                  <div class="cell foil"><em>刮</em></div>
+                  <div class="cell"><span class="n">05</span><span class="pz">720<s>币</s></span></div>
+                  <div class="cell foil"><em>刮</em></div>
+                </div>
+
+                <div class="stub">
                   <div class="row">
-                    <i>金</i><i class="dim">刮</i><i>金</i>
-                    <i class="dim">刮</i><i>1,200</i>
+                    <div class="bc"></div>
+                    <div class="sn">NO.20261106 0233 5164</div>
+                    <div class="dots">
+                      <i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
+                      <i></i><i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i>
+                      <i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i><i></i>
+                      <i></i><i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i>
+                      <i></i><i class="o"></i><i></i><i></i><i></i><i class="o"></i><i></i>
+                      <i></i><i></i><i class="o"></i><i></i><i></i><i></i><i></i>
+                      <i class="o"></i><i></i><i></i><i class="o"></i><i></i><i></i><i></i>
+                    </div>
+                    <div class="guard">刮开<br>无效</div>
                   </div>
+                  <div class="micro">GUOYUN YOUXITING · NOPRIZE 0400-0233 · ZGFC</div>
                 </div>
-                <div class="dn">4,000 币 · 今日 1 次</div>
               </div>
             </div>
 
-            <div class="note-box">
-              <b>区分依据（不看颜色）：</b>福彩＝<em>拱形匾额 + 大圆角</em>；体彩＝<em>平顶红条 + 直角网格</em>；HOT＝<em>左倾色块 + 斜纹</em>。
-              三者在灰度截图下依然一眼可分。
+            <div class="tickbar">
+              <div class="ticks">
+                <i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i>
+                <i class="done"></i><i class="done"></i><i class="done"></i><i class="done"></i>
+                <i class="done"></i><i class="done"></i>
+                <i></i><i></i><i></i><i></i><i></i><i></i>
+              </div>
+              <span>10 / 16</span>
             </div>
 
-            <div class="cmp">
-              <div class="row head"><span>维度</span><span>福彩系</span><span>体彩系</span><span>HOT 系</span></div>
-              <div class="row"><span>纸底</span><span>米黄</span><span>纸白</span><span>紫黑</span></div>
-              <div class="row"><span>骨架</span><span>匾额</span><span>表格</span><span>斜切</span></div>
-              <div class="row"><span>圆角</span><span>12</span><span>4</span><span>10</span></div>
-              <div class="row"><span>阴影</span><span>柔</span><span>硬</span><span>发光</span></div>
+            <div class="toolbar">
+              <div class="tool"><span class="shape sp-finger"></span><span class="lb">指刮</span></div>
+              <div class="tool"><span class="shape sp-bone"></span><span class="lb">骨刮</span></div>
+              <div class="tool on"><span class="shape sp-copper"></span><span class="lb">铜铲</span></div>
+            </div>
+
+            <div class="actions">
+              <div class="btn btn-ghost" style="width:118px">全部刮开</div>
+              <div class="btn btn-gold" style="flex:1">刮开剩余 6 格</div>
+            </div>
+          </div>
+
+          <div class="homebar" style="margin-top:auto"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       ⑧ 兑付台（新增）
+       ============================================================ -->
+  <div class="frame">
+    <div class="cap"><i>08</i><b>兑付台</b><span>待兑票堆 · 刮保安区仪式 · 结果明细</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="layer">
+          <div class="statusbar">
+            <span>10:52</span>
+            <span style="display:flex;align-items:center">
+              <span class="sig"><b></b><b></b><b></b></span>
+              <span class="batt"></span>
+            </span>
+          </div>
+
+          <div class="topnav">
+            <div class="back"><i></i></div>
+            <h2>兑付台</h2>
+            <div class="act">记录</div>
+          </div>
+
+          <div style="flex:1;padding:0 16px;overflow:hidden;display:flex;flex-direction:column">
+            <div style="display:flex;align-items:baseline;gap:8px">
+              <span style="font-size:13px;color:var(--text-2);letter-spacing:1.5px">待兑 5 张</span>
+              <span style="font-size:10px;color:var(--text-3);letter-spacing:.5px">· 60 日内有效</span>
+              <span class="pill-ver" style="margin-left:auto;font-size:9px;padding:2px 7px">全部选中</span>
+            </div>
+
+            <!-- 票堆：3 张叠放，偏移 + 旋转 -->
+            <div class="stack">
+              <div class="stk p3">
+                <span class="badge">兑</span>
+                <div><div class="nm">晨光</div><div class="no">NO.0091</div></div>
+                <div class="am zero">未中</div>
+              </div>
+              <div class="stk p2">
+                <span class="badge">兑</span>
+                <div><div class="nm">雨后</div><div class="no">NO.0233</div></div>
+                <div class="am">720<small>币</small></div>
+              </div>
+              <div class="stk p1">
+                <span class="badge">兑</span>
+                <div><div class="nm">烫金</div><div class="no">NO.0418</div></div>
+                <div class="am">11,200<small>币</small></div>
+              </div>
+            </div>
+
+            <!-- 扫码 / 刮保安区仪式 -->
+            <div class="scanner">
+              <div class="cut"></div>
+              <div class="mini-tk">
+                <div>
+                  <div class="t1">烫金</div>
+                  <div class="t2">NO.20261106 0417 8832</div>
+                </div>
+                <div class="guard">刮开<br>无效</div>
+              </div>
+              <span class="cor tl"></span><span class="cor tr"></span>
+              <span class="cor bl"></span><span class="cor br"></span>
+              <div class="scan"></div>
+            </div>
+
+            <div class="scanner-tip">刮开<b>保安区</b>，或直接对准条码</div>
+
+            <!-- 结果卡 -->
+            <div class="rcard">
+              <div class="hd">本 批 5 张 · 中 4 张</div>
+              <div class="big"><b>15,280</b><span>币</span></div>
+              <div class="lines">
+                <div class="r"><span>烫金 NO.0417</span><b>3,200</b></div>
+                <div class="r"><span>烫金 NO.0418</span><b>11,200</b></div>
+                <div class="r"><span>雨后 NO.0233</span><b>720</b></div>
+                <div class="r miss"><span>晨光 NO.0091</span><b>未中</b></div>
+                <div class="r"><span>晨光 NO.0092</span><b>160</b></div>
+              </div>
+            </div>
+
+            <div class="actions" style="margin-top:auto;margin-bottom:12px">
+              <div class="btn btn-gold">全部领取</div>
             </div>
           </div>
 
@@ -1050,12 +1899,15 @@ body{
 
 <div class="footer">
   <div class="footer-num">
-    <b>数值口径：</b>本页所有金额为 <b>v2.0 演示口径</b>，实际以 <b>GDD v2.0 第 5.4 节数值表</b>为准 ——
-    晨光 100 ／ 雨后 400 ／ 烫金 1,600 ／ 丝绒 6,000 ／ 夜光 24,000 ／ 霜花 100,000 ／ 好运十倍 200 ／ 热力 4,000。
+    <b>数值口径：</b>本页所有金额沿用 <b>GDD v2.0 第 5.4 节数值表</b> ——
+    晨光 100 ／ <b>合符 200</b>（原「好运十倍」改名）／ 雨后 400 ／ 烫金 1,600 ／ 鎏夜 4,000 ／ 丝绒 6,000 ／ 夜光 24,000 ／ 霜花 100,000。
+    最高奖取各票种特等奖档（12,000 / 8,000 / 80,000 / 480,000 / 8,000 / 3,000,000 / 18,000,000 / 100,000,000），与 GDD 一致。
   </div>
-  <b>色值来源：</b>docs/art/art-bible-v2.md §2 —— 本页所有颜色、圆角、阴影均与文档同名 Token 一一对应。<br>
-  <b>可绘制性：</b>全部视觉由渐变 / 圆角矩形 / 描边 / 多层半透明叠画构成，无位图、无图标字体、无非 CJK 符号，可直接由 NanoVG 代码实现。<br>
-  <b>字体：</b>NotoSansSC 单字重；粗体靠「同文本偏移 0.6dp 重绘」伪造，大标题靠描边实现。
+  <b>色值来源：</b>docs/art/art-bible-v2.md v2.1 §11 —— 8 款皮肤的主色 / 辅色 / 纸色 / 边框色 / 标题色 / 号码色 / 中奖色，本页以 <code>--t-*</code> 变量一一对应。<br>
+  <b>票面八层（§10）：</b>纸 + 网点 → 双线框 + 纹样带 + 角花 → 票名压印 → 玩法说明 → 对照号 → 号码格 → 银灰涂层 → 票根（条形码 / 票号 / 点阵 / 保安区 / 微缩文字）。<br>
+  <b>可绘制性：</b>纹样与角花在页内用内联 SVG 路径表达——SVG path 与 NanoVG 的 path 命令一一对应（MoveTo/LineTo/BezierTo/Arc），参数即 art-bible 里给出的坐标，可直接手写实现；其余全部是渐变、圆角矩形、描边与多层半透明叠画。无位图、无图标字体、无非 CJK 符号。<br>
+  <b>涂层（§12）：</b>银层为「3 停渐变 + 每 2dp 拉丝 + −24° 斜光带」；半刮格用不规则 clip-path 模拟「子格外扩 0–1.4dp」的手刮毛边，并叠 20% 银粉雾与 2 条刃痕。<br>
+  <b>字体：</b>NotoSansSC 单字重；标题粗体靠「同文本偏移 0.65dp 重绘」+ 0.7dp 描边伪造，压印靠三层错位（亮唇 / 墨身 / 暗唇）。真宋体需追加 NotoSerifSC 子集，见 §10.3 与附录 D。
 </div>
 
 </body>
