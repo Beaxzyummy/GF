@@ -42,7 +42,7 @@ local TICKET_DEFS = {
       zones={ {cols=4, rows=4, label="玩法一 · 找福"}, {cols=4, rows=3, label="玩法二 · 找福"} },
       skin="noir", unlock=64 },
     { id="frost",  name="霜花",  yuan=50, price=10000, rtp=2.40, judge="number", lucky=3,
-      zones={ {cols=5, rows=4, label="玩法一 · 对号"},
+      zones={ {cols=5, rows=3, label="玩法一 · 对号"},
               {cols=4, rows=3, label="玩法二 · 对号"},
               {cols=4, rows=2, label="玩法三 · 对号"} }, skin="ice", unlock=84 },
 }
@@ -1509,8 +1509,8 @@ function buildMultiScreen()
     local totalRows = 0
     for _, z in ipairs(cur.zones) do totalRows = totalRows + z.rows end
 
-    local titleH, zoneGap, gap = 17, 7, 4
-    local padT, padB = 40, 10
+    local titleH, zoneGap, gap = 15, 5, 4
+    local padT, padB = 36, 10
 
     local maxCols = 1
     for _, z in ipairs(cur.zones) do if z.cols > maxCols then maxCols = z.cols end end
@@ -1553,8 +1553,8 @@ function buildMultiScreen()
     for i = 1, cur.total do
         local rc = scratch_.cellRects[i]
         local c = cur.cells[i]
-        local numSize = math.floor(cell * 0.42)
-        local amtSize = math.floor(cell * 0.21)
+        local numSize = math.max(11, math.min(26, math.floor(cell * 0.42)))
+        local amtSize = math.max(9, math.min(14, math.floor(cell * 0.24)))
         local valColor = isNum and { 42, 36, 28, 255 } or (SYMBOL_COLOR[c.val] or { 60, 50, 40, 255 })
         table.insert(widgets, UI.Panel {
             position = "absolute", left = rc.x, top = rc.y, width = rc.w, height = rc.h,
