@@ -278,6 +278,7 @@ function defaultState()
         owned={},       -- staffId → { id, rarity, level, deployed }
         shards={ UR=0,SSR=0,SR=0,R=0 },
         lastSeen=os.time(),
+        ads={ day=0, total=0, byPlacement={}, lastTs=0 },
     }
 end
 
@@ -320,6 +321,10 @@ function loadGame()
     for k, v in pairs(data) do d[k] = v end
     if type(d.owned) ~= "table" then d.owned = {} end
     if type(d.shards) ~= "table" then d.shards = { UR=0,SSR=0,SR=0,R=0 } end
+    -- 存档迁移：旧版本没有 ads 频控表，补默认值避免 nil 索引崩溃
+    if type(d.ads) ~= "table" or type(d.ads.byPlacement) ~= "table" then
+        d.ads = { day=todayIndex(), total=0, byPlacement={}, lastTs=0 }
+    end
     state_ = d
     return true
 end
@@ -535,7 +540,9 @@ local screenStack_ = {}      -- 简单返回栈：phone 等
 
 function Start()
     -- 启动保护：出错时把错误显示出来，避免黑屏闪退无法定位
-    local ok, err = pcall(StartInner)
+    local ok, err = xpcall(StartInner, function(e)
+        return debug.traceback(tostring(e), 2)
+    end)
     if not ok then
         print("=== 启动错误: " .. tostring(err) .. " ===")
         pcall(function()
