@@ -51,9 +51,14 @@
       "../.tmp"
     ]
   },
+<<<<<<< HEAD
   "@runtime": {
     "multiplayer": {
       "enabled": false
     }
+=======
+  "taptap_publish": {
+    "screen_orientation": "portrait"
+>>>>>>> 9f976d6 (feat: 锁定竖屏（taptap_publish.screen_orientation=portrait）)
   }
 }
