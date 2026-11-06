@@ -1502,15 +1502,15 @@ function buildMultiScreen()
     local cardX = 10
     local cardW = W - 20
     local cardY = topPad + headerH + 2
-    local bottomH = 96
+    local bottomH = 88
     local cardH = H - cardY - bottomH
 
     local nZones = #cur.zones
     local totalRows = 0
     for _, z in ipairs(cur.zones) do totalRows = totalRows + z.rows end
 
-    local titleH, zoneGap, gap = 15, 5, 4
-    local padT, padB = 36, 10
+    local titleH, zoneGap, gap = 14, 4, 3
+    local padT, padB = 58, 6
 
     local maxCols = 1
     for _, z in ipairs(cur.zones) do if z.cols > maxCols then maxCols = z.cols end end
@@ -1519,7 +1519,17 @@ function buildMultiScreen()
     local fixedH = padT + padB + nZones * titleH + (nZones - 1) * zoneGap + (totalRows - nZones) * gap
     local cellByH = math.floor((cardH - fixedH) / math.max(1, totalRows))
     local cellByW = math.floor((cardW - 24) / maxCols)
-    local cell = math.max(28, math.min(cellByH, cellByW, 66))
+    local cell = math.max(26, math.min(cellByH, cellByW, 66))
+
+    -- 溢出保护：任何分辨率下都不许把格子画到票面外
+    while cell > 26 do
+        local yEnd = cardY + padT
+        for _, z in ipairs(cur.zones) do
+            yEnd = yEnd + titleH + (z.rows * cell + (z.rows - 1) * gap) + zoneGap
+        end
+        if yEnd - zoneGap <= cardY + cardH - 2 then break end
+        cell = cell - 2
+    end
 
     scratch_.zones, scratch_.cellRects = {}, {}
     local titlePos = {}
@@ -1585,50 +1595,50 @@ function buildMultiScreen()
         })
     end
 
-    -- 幸运号 / 目标符号
+    -- 幸运号 / 目标符号（横排胶囊）
     local headKids = {}
     if isNum then
-        table.insert(headKids, UI.Label { text = "幸运号", fontSize = 10,
-            fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 180 } })
-        local row = {}
+        table.insert(headKids, UI.Label { text = "幸运号", fontSize = 9,
+            fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 190 } })
         for _, v in ipairs(cur.lucky) do
-            table.insert(row, UI.Panel {
-                width = 38, height = 30, borderRadius = 4,
+            table.insert(headKids, UI.Panel {
+                width = 30, height = 26, borderRadius = 4,
                 backgroundColor = { 255, 250, 238, 255 },
-                borderWidth = 1, borderColor = { skin.frame[1], skin.frame[2], skin.frame[3], 140 },
+                borderWidth = 1, borderColor = { skin.frame[1], skin.frame[2], skin.frame[3], 150 },
                 justifyContent = "center", alignItems = "center",
-                children = { UI.Label { text = tostring(v), fontSize = 17, fontColor = { 170, 40, 30, 255 } } },
+                children = { UI.Label { text = tostring(v), fontSize = 15, fontColor = { 170, 40, 30, 255 } } },
             })
         end
-        table.insert(headKids, UI.Panel { flexDirection = "row", gap = 5, children = row })
     else
-        table.insert(headKids, UI.Label { text = "刮出这个符号就中奖", fontSize = 10,
-            fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 180 } })
+        table.insert(headKids, UI.Label { text = "找这个", fontSize = 9,
+            fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 190 } })
         table.insert(headKids, UI.Panel {
-            width = 38, height = 30, borderRadius = 4,
+            width = 30, height = 26, borderRadius = 4,
             backgroundColor = { 255, 250, 238, 255 },
-            borderWidth = 1, borderColor = { skin.frame[1], skin.frame[2], skin.frame[3], 140 },
+            borderWidth = 1, borderColor = { skin.frame[1], skin.frame[2], skin.frame[3], 150 },
             justifyContent = "center", alignItems = "center",
-            children = { UI.Label { text = cur.target, fontSize = 19,
+            children = { UI.Label { text = cur.target, fontSize = 17,
                 fontColor = SYMBOL_COLOR[cur.target] or { 170, 40, 30, 255 } } },
         })
     end
 
-    -- 票名（压印感：深墨色）
+    -- 票头：左票名 / 右幸运号
     local topRow = UI.Panel {
         position = "absolute", left = cardX + 14, top = cardY + 8,
-        width = cardW - 28, height = 36,
+        width = cardW - 28, height = 46,
+        flexDirection = "row", justifyContent = "space-between", alignItems = "center",
         pointerEvents = "none",
         children = {
             UI.Panel {
-                gap = 0,
+                gap = 1,
                 children = {
-                    UI.Label { text = tk.name .. "  ·  " .. tk.yuan .. " 元", fontSize = 17,
+                    UI.Label { text = tk.name .. " · " .. tk.yuan .. " 元", fontSize = 16,
                         fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 255 } },
-                    UI.Label { text = "共 " .. cur.total .. " 次中奖机会 · 整张刮开自动开奖", fontSize = 9,
-                        fontColor = { skin.frame[1], skin.frame[2], skin.frame[3], 200 } },
+                    UI.Label { text = "共 " .. cur.total .. " 次中奖机会", fontSize = 9,
+                        fontColor = { skin.frame[1], skin.frame[2], skin.frame[3], 210 } },
                 },
             },
+            UI.Panel { flexDirection = "row", alignItems = "center", gap = 4, children = headKids },
         },
     }
 
@@ -1662,16 +1672,13 @@ function buildMultiScreen()
                 pointerEvents = "none",
             },
             topRow,
-            UI.Panel { position = "absolute", left = cardX + 14, top = cardY + 50,
-                width = cardW - 28, height = 40, flexDirection = "row",
-                alignItems = "center", gap = 10, children = headKids },
             UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
                 pointerEvents = "none", children = titles },
             UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
                 pointerEvents = "none", children = widgets },
             -- 底部：进度 + 提示
             UI.Panel {
-                position = "absolute", left = 16, right = 16, bottom = 20, gap = 6, alignItems = "center",
+                position = "absolute", left = 16, right = 16, bottom = 14, gap = 5, alignItems = "center",
                 pointerEvents = "none",
                 children = {
                     UI.Label { id = "scratchPct", text = "刮开 0% · 全部刮开即开奖", fontSize = 11, fontColor = C.dim },
