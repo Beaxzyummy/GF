@@ -1,0 +1,1062 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>好运游戏厅 · 视觉稿 v2.0</title>
+<style>
+/* =========================================================
+   《好运游戏厅》UI 视觉稿 v2.0
+   色值与 docs/art/art-bible-v2.md 完全一致（同名 Token）
+   技术前提：全部可由 NanoVG 代码绘制，无位图依赖
+   ========================================================= */
+:root{
+  /* 暗场 */
+  --ink-900:#120C09; --ink-800:#1B120D; --ink-700:#241811; --ink-600:#2F2118;
+  --line:#4A3626;    --line-soft:rgba(255,255,255,.08);
+  /* 金 */
+  --gold-100:#FFE9A8; --gold-300:#F6E29E; --gold-500:#D4AF37; --gold-700:#8A6A20;
+  /* 红 */
+  --red-300:#FF6B5A;  --red-400:#E23A2E;  --red-500:#C8102E;  --red-700:#8C1024; --red-900:#6B0C1B;
+  /* 绿 */
+  --green-300:#3FD08A;--green-500:#00A15C;--green-700:#00713F;
+  /* 纸 */
+  --paper:#FBF7EF;    --paper-2:#F2E9D8;  --paper-3:#E2D5BE;  --paper-f:#C9B99B;
+  --ink-paper:#2B2118;--ink-paper-2:#6B5B47;
+  /* 文字 */
+  --text:#F5EFE3;     --text-2:#C9BCA6;   --text-3:#8A7C68;
+  /* 功能 */
+  --ok:#3FBF6F; --warn:#FFB020; --danger:#E0453A; --info:#4A90E2;
+  /* 涂层 */
+  --foil-1:#DCE1E8; --foil-2:#B9C0CB; --foil-3:#8A929F;
+  /* HOT */
+  --hot-bg:#0B0918; --neon-pink:#FF2E88; --neon-cyan:#22E0FF; --neon-purple:#8B5CF6; --neon-lime:#B4FF3C;
+}
+
+*{margin:0;padding:0;box-sizing:border-box;-webkit-font-smoothing:antialiased}
+body{
+  background:
+    radial-gradient(90% 50% at 50% 0%, rgba(212,175,55,.10), transparent 65%),
+    #0A0705;
+  font-family:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans SC",system-ui,sans-serif;
+  color:var(--text); padding:0 0 80px;
+}
+
+/* ---------- 页头说明条 ---------- */
+.topbar{
+  position:sticky; top:0; z-index:99;
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;
+  padding:14px 32px;
+  background:rgba(18,12,9,.92);
+  border-bottom:1px solid var(--line);
+  backdrop-filter:blur(8px);
+}
+.topbar .brand{display:flex; align-items:baseline; gap:14px}
+.topbar .brand b{font-size:18px; letter-spacing:2px;
+  background:linear-gradient(180deg,#FFE9A8,#D4AF37 60%,#8A6A20);
+  -webkit-background-clip:text;background-clip:text;color:transparent;font-weight:600}
+.topbar .brand span{font-size:12px; color:var(--text-3); letter-spacing:1px}
+.topbar .meta{display:flex; align-items:center; gap:14px; font-size:12px; color:var(--text-3)}
+.topbar .meta em{font-style:normal;color:var(--gold-500)}
+.pill-ver{font-size:11px;color:var(--gold-300);border:1px solid rgba(212,175,55,.35);
+  border-radius:11px;padding:3px 10px;letter-spacing:.5px}
+.pill-num{font-size:11px;color:var(--text-3);border:1px solid rgba(255,255,255,.12);
+  border-radius:11px;padding:3px 10px;letter-spacing:.5px}
+
+/* ---------- 色板条 ---------- */
+.palette{display:flex;gap:0;justify-content:center;margin:22px auto 0;max-width:1400px;padding:0 24px}
+.palette i{flex:1;height:8px;display:block}
+.palette i:first-child{border-radius:4px 0 0 4px}
+.palette i:last-child{border-radius:0 4px 4px 0}
+.palette-cap{text-align:center;font-size:11px;color:var(--text-3);letter-spacing:2px;margin-top:8px}
+
+/* ---------- 手机容器 ---------- */
+.stage{display:flex;flex-wrap:wrap;justify-content:center;gap:56px 40px;padding:44px 32px 20px}
+.frame{width:390px}
+.frame .cap{display:flex;align-items:baseline;gap:10px;margin-bottom:14px;padding-left:4px}
+.frame .cap b{font-size:14px;color:var(--text);letter-spacing:1px;font-weight:600}
+.frame .cap span{font-size:11px;color:var(--text-3);letter-spacing:.5px}
+.frame .cap i{font-style:normal;font-size:11px;color:var(--gold-700);letter-spacing:1px}
+
+.phone{
+  position:relative;width:390px;height:844px;border-radius:40px;
+  background:var(--ink-900);overflow:hidden;
+  border:1px solid rgba(212,175,55,.16);
+  box-shadow:0 0 0 8px #0E0907, 0 30px 70px rgba(0,0,0,.75), 0 0 60px rgba(212,175,55,.05);
+}
+.screen{position:absolute;inset:0;overflow:hidden;display:flex;flex-direction:column}
+/* 全屏顶光 + 四角压暗（对应 art-bible §4.6） */
+.screen::before{content:"";position:absolute;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(120% 55% at 50% -8%, rgba(212,175,55,.16), rgba(212,175,55,0) 62%)}
+.screen::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:40;
+  box-shadow:inset 0 0 90px rgba(0,0,0,.55)}
+.layer{position:relative;z-index:1;display:flex;flex-direction:column;height:100%}
+
+/* ---------- 状态栏 ---------- */
+.statusbar{height:48px;display:flex;align-items:center;justify-content:space-between;
+  padding:0 26px;font-size:13px;color:var(--text-2);letter-spacing:.5px;flex:none}
+.statusbar .sig{display:flex;align-items:flex-end;gap:3px}
+.statusbar .sig b{display:block;width:3px;background:var(--text-2);border-radius:1px}
+.statusbar .sig b:nth-child(1){height:5px;opacity:.5}
+.statusbar .sig b:nth-child(2){height:8px;opacity:.75}
+.statusbar .sig b:nth-child(3){height:11px}
+.statusbar .batt{width:22px;height:11px;border:1px solid var(--text-3);border-radius:3px;
+  position:relative;margin-left:8px}
+.statusbar .batt::after{content:"";position:absolute;left:2px;top:2px;bottom:2px;width:12px;
+  background:var(--gold-500);border-radius:1px}
+
+/* =========================================================
+   ① 大厅
+   ========================================================= */
+.hall{padding:0 16px}
+.hall-title{margin-top:4px}
+.hall-title h1{font-size:27px;letter-spacing:4px;line-height:1.2;font-weight:600;
+  background:linear-gradient(180deg,#FFF3CB 0%,#F6E29E 22%,#D4AF37 62%,#8A6A20 100%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 2px 0 rgba(74,54,16,.55))}
+.hall-title p{font-size:12px;color:var(--text-3);letter-spacing:2px;margin-top:6px}
+.hall-title p em{font-style:normal;color:var(--gold-700)}
+
+/* HUD 货币条 */
+.hud{display:flex;gap:8px;margin-top:14px}
+.chip-cur{flex:1;height:30px;border-radius:15px;display:flex;align-items:center;justify-content:center;gap:6px;
+  background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);font-size:13px}
+.chip-cur .ico{width:16px;height:16px;flex:none;display:grid;place-items:center}
+.coin{width:15px;height:15px;border-radius:50%;
+  background:radial-gradient(circle at 34% 30%,#FFE9A8,#D4AF37 62%,#8A6A20);
+  border:1px solid #6B5214;position:relative}
+.coin::after{content:"";position:absolute;left:50%;top:50%;width:5px;height:5px;
+  transform:translate(-50%,-50%);background:#241811;border-radius:1px}
+.gem{width:11px;height:11px;transform:rotate(45deg);border-radius:2px;
+  background:linear-gradient(135deg,#9FD2FF,#2C6FB5);border:1px solid #1B4A7A}
+.tkt{width:14px;height:10px;border-radius:2px;background:var(--red-500);position:relative}
+.tkt::after{content:"";position:absolute;left:3px;top:2px;bottom:2px;width:1px;
+  background:rgba(255,255,255,.5);box-shadow:3px 0 0 rgba(255,255,255,.5)}
+.chip-cur b{font-weight:500;color:var(--gold-500);letter-spacing:.3px;font-size:13px}
+.chip-cur.dim b{color:var(--text-2)}
+
+/* 分区标题 */
+.sec{display:flex;align-items:center;gap:10px;margin:22px 0 10px}
+.sec h2{font-size:15px;color:var(--text-2);letter-spacing:1.5px;font-weight:500}
+.sec .ln{flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+.sec .tag{font-size:10px;color:var(--gold-700);letter-spacing:1px;border:1px solid rgba(212,175,55,.22);
+  padding:2px 6px;border-radius:8px}
+
+/* 票券卡 */
+.tcard{position:relative;display:flex;align-items:center;gap:12px;
+  height:88px;padding:0 12px;border-radius:12px;overflow:hidden;
+  background:linear-gradient(150deg,#2C1E15 0%,#241811 58%,#1F150F 100%);
+  border:1px solid rgba(212,175,55,.16);
+  box-shadow:0 5px 16px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.05);
+  margin-bottom:10px}
+.tcard::before{content:"";position:absolute;left:0;top:0;bottom:0;width:6px}
+/* 皮肤色脊 */
+.tcard.s-fucai::before{background:linear-gradient(180deg,#E23A2E,#8C1024)}
+.tcard.s-ticai::before{background:linear-gradient(180deg,#C8102E 0%,#C8102E 46%,#00A15C 46%,#00713F 100%)}
+.tcard.s-hot::before{background:linear-gradient(180deg,#FF2E88,#8B5CF6)}
+.tcard.s-hot{background:linear-gradient(150deg,#151026 0%,#0B0918 70%);
+  border-color:rgba(255,46,136,.24);
+  box-shadow:0 5px 16px rgba(0,0,0,.5), 0 0 22px rgba(255,46,136,.10)}
+/* 打孔线：改为弹性分隔条，自动避开长面额 */
+.tc-cut{flex:none;width:1px;align-self:stretch;margin:10px 0;
+  background:repeating-linear-gradient(180deg,rgba(255,255,255,.16) 0 3px,transparent 3px 7px)}
+.tc-main{flex:1;min-width:0;padding-left:2px;overflow:hidden}
+.tc-main h3,.tc-main p{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tc-main h3{font-size:16px;letter-spacing:1px;color:var(--text);font-weight:500;line-height:1.3}
+.tc-main h3 .lv{font-size:10px;color:var(--gold-300);border:1px solid rgba(212,175,55,.4);
+  border-radius:7px;padding:1px 5px;margin-left:6px;vertical-align:2px;letter-spacing:0}
+.tc-main p{font-size:10.5px;color:var(--text-3);letter-spacing:.6px;margin-top:3px}
+.tc-main p .dot{margin:0 5px;opacity:.45}
+.tc-price{text-align:right;flex:none;width:66px}
+.tc-price .p{font-size:17px;color:var(--gold-500);letter-spacing:.5px}
+.tc-price .p small{font-size:10px;color:var(--text-3);margin-left:2px}
+.tc-price .u{font-size:9.5px;color:var(--text-3);margin-top:2px;letter-spacing:.5px}
+/* 主推小签（嵌在票名行内，不压边角） */
+.hb{font-style:normal;font-size:9px;letter-spacing:1px;color:#FFF8EC;background:var(--red-500);
+  border-radius:3px;padding:1px 5px;margin-right:7px;vertical-align:3px;
+  box-shadow:0 1px 0 rgba(0,0,0,.35)}
+/* 今日战绩 */
+.stats{display:flex;border-radius:12px;overflow:hidden;
+  background:linear-gradient(150deg,#2A1D14,#1E1510);border:1px solid rgba(212,175,55,.13);
+  box-shadow:0 4px 12px rgba(0,0,0,.4)}
+.stats .st{flex:1;padding:11px 0 10px;text-align:center;position:relative}
+.stats .st+.st::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:1px;
+  background:linear-gradient(180deg,transparent,rgba(212,175,55,.25),transparent)}
+.stats b{display:block;font-size:19px;color:var(--gold-500);letter-spacing:.5px;font-weight:500}
+.stats span{display:block;font-size:9.5px;color:var(--text-3);letter-spacing:1px;margin-top:4px}
+/* 票卡即时按钮 */
+.tc-buy{width:56px;height:34px;border-radius:9px;flex:none;display:grid;place-items:center;
+  font-size:13px;color:#2B2118;letter-spacing:1px;
+  background:linear-gradient(180deg,#FFE9A8,#F6E29E 18%,#D4AF37 64%,#B08D28);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6), 0 2px 0 rgba(0,0,0,.45)}
+
+/* 两宫格 */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.mini{height:82px;border-radius:12px;padding:11px 12px;position:relative;overflow:hidden;
+  background:linear-gradient(155deg,#2A1D14,#1E1510);border:1px solid rgba(212,175,55,.14);
+  box-shadow:0 4px 12px rgba(0,0,0,.4)}
+.mini h4{font-size:14px;color:var(--text);letter-spacing:1px;font-weight:500}
+.mini p{font-size:10px;color:var(--text-3);letter-spacing:.5px;margin-top:4px}
+.mini .ring{position:absolute;right:10px;bottom:8px;width:38px;height:38px;border-radius:50%;
+  background:conic-gradient(var(--gold-500) 0 60%, rgba(255,255,255,.07) 60% 100%);
+  display:grid;place-items:center}
+.mini .ring::after{content:"";position:absolute;inset:4px;border-radius:50%;background:#1E1510}
+.mini .ring b{position:relative;z-index:1;font-size:10px;color:var(--gold-300);font-weight:400}
+.mini.cat .ring{background:none}
+.mini.cat .ring b{font-size:20px;color:var(--gold-500);letter-spacing:0}
+
+/* 底栏 Dock */
+.dock{margin-top:auto;height:60px;background:#1B120D;border-top:1px solid var(--line);
+  display:flex;align-items:center;justify-content:space-around;flex:none;
+  box-shadow:0 -8px 24px rgba(0,0,0,.45)}
+.dock .it{width:40px;display:flex;flex-direction:column;align-items:center;gap:0;position:relative}
+.dock .ic{width:38px;height:34px;border-radius:11px;display:grid;place-items:center;
+  font-size:19px;color:var(--text-3);border:1px solid transparent;transition:.2s}
+.dock .it.on .ic{color:var(--gold-300);border-color:rgba(212,175,55,.35);
+  background:rgba(212,175,55,.07);text-shadow:0 0 12px rgba(212,175,55,.45)}
+.dock .it.on::after{content:"";position:absolute;bottom:-9px;width:12px;height:2px;border-radius:1px;
+  background:var(--gold-500);box-shadow:0 0 8px rgba(212,175,55,.8)}
+.homebar{height:24px;display:grid;place-items:center;flex:none}
+.homebar i{width:120px;height:4px;border-radius:2px;background:rgba(255,255,255,.22);display:block}
+
+/* =========================================================
+   ② 刮卡页（体彩顶呱刮 · 主打皮肤）
+   ========================================================= */
+.topnav{height:52px;display:flex;align-items:center;padding:0 8px 0 6px;flex:none}
+.topnav .back{width:44px;height:44px;display:grid;place-items:center}
+.topnav .back i{display:block;width:10px;height:10px;border-left:2px solid var(--text-2);
+  border-bottom:2px solid var(--text-2);transform:rotate(45deg);margin-left:4px}
+.topnav h2{flex:1;text-align:center;font-size:18px;letter-spacing:2px;color:var(--text);font-weight:500}
+.topnav .act{width:52px;text-align:right;font-size:12px;color:var(--gold-500);letter-spacing:.5px}
+
+.scratch-body{flex:1;padding:0 16px;position:relative;z-index:1}
+
+/* 票面卡 —— 纸感核心 */
+.ticket{position:relative;border-radius:10px;overflow:hidden;background:var(--paper);
+  border:1px solid var(--red-500);
+  box-shadow:0 3px 0 rgba(0,0,0,.4), 0 14px 34px rgba(0,0,0,.55);
+}
+/* 纸张纤维 */
+.ticket .grain{position:absolute;inset:0;pointer-events:none;opacity:.5;mix-blend-mode:multiply;
+  background-image:
+    repeating-linear-gradient(73deg, rgba(201,185,155,.14) 0 1px, transparent 1px 11px),
+    repeating-linear-gradient(-12deg, rgba(201,185,155,.10) 0 1px, transparent 1px 17px),
+    radial-gradient(120% 90% at 50% 0%, rgba(0,0,0,0) 55%, rgba(107,91,71,.14) 100%);
+}
+/* 票头红条 */
+.tk-head{position:relative;background:linear-gradient(180deg,#D4192F 0%,#C8102E 58%,#A80C26 100%);
+  padding:9px 13px 11px;box-shadow:inset 0 1px 0 rgba(255,255,255,.18)}
+.tk-head .kicker{font-size:9px;letter-spacing:3px;color:rgba(255,248,236,.72)}
+.tk-head .row{display:flex;align-items:flex-end;justify-content:space-between;margin-top:2px}
+.tk-head h3{font-size:25px;letter-spacing:4px;color:#FFF8EC;font-weight:600;
+  text-shadow:0 1px 0 rgba(0,0,0,.28)}
+.tk-head .denom{display:flex;align-items:baseline;gap:2px;background:#FFF8EC;border-radius:4px;
+  padding:2px 8px 3px;box-shadow:0 1px 0 rgba(0,0,0,.2)}
+.tk-head .denom b{font-size:17px;color:var(--red-500);letter-spacing:0;font-weight:600}
+.tk-head .denom span{font-size:9px;color:var(--ink-paper-2)}
+.tk-head .serial{position:absolute;right:13px;bottom:2px;font-size:7.5px;letter-spacing:.5px;
+  color:rgba(255,248,236,.6)}
+/* 绿分隔线 */
+.tk-green{height:3px;background:linear-gradient(90deg,var(--green-500),var(--green-700) 60%,var(--green-500))}
+
+/* 中奖号码区 */
+.tk-win{display:flex;align-items:center;gap:12px;padding:10px 13px 8px}
+.tk-win .lb{font-size:11px;color:var(--green-700);letter-spacing:2px;line-height:1.5;flex:none}
+.tk-win .lb em{display:block;font-style:normal;font-size:8px;color:var(--paper-f);letter-spacing:1px}
+.tk-win .num{width:54px;height:52px;border-radius:5px;display:grid;place-items:center;
+  border:2px solid var(--red-500);background:#fff;
+  box-shadow:inset 0 0 0 3px rgba(200,16,46,.06), 0 1px 2px rgba(0,0,0,.12)}
+.tk-win .num b{font-size:30px;color:var(--red-500);line-height:1;font-weight:600;letter-spacing:0}
+.tk-win .hint{margin-left:auto;text-align:right;font-size:9px;color:var(--ink-paper-2);line-height:1.6;letter-spacing:.5px}
+.tk-win .hint b{color:var(--red-500);font-weight:500}
+
+/* 刮区 */
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:2px 13px 12px}
+.cell{height:62px;border-radius:4px;position:relative;overflow:hidden}
+/* 未刮：涂层 */
+.cell.foil{
+  background:
+    linear-gradient(118deg, rgba(255,255,255,.55) 0%, rgba(255,255,255,0) 38%, rgba(255,255,255,.22) 52%, rgba(255,255,255,0) 66%),
+    repeating-linear-gradient(45deg, rgba(255,255,255,.18) 0 3px, rgba(255,255,255,0) 3px 9px),
+    linear-gradient(158deg,#DCE1E8 0%,#C4CAD4 40%,#B9C0CB 62%,#8A929F 100%);
+  border:1px solid rgba(43,33,24,.22);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.7), inset 0 -1px 0 rgba(0,0,0,.14), inset 0 0 20px rgba(0,0,0,.06);
+  display:grid;place-items:center;
+}
+.cell.foil::after{content:"";position:absolute;inset:0;
+  background:radial-gradient(80% 90% at 50% 42%, rgba(255,255,255,.45), rgba(255,255,255,0) 70%)}
+.cell.foil span{position:relative;z-index:1;font-size:21px;color:#6E7683;opacity:.55;letter-spacing:2px}
+/* 已刮 */
+.cell.open{background:var(--paper);border:1px solid var(--paper-3);display:flex;
+  align-items:center;justify-content:space-between;padding:0 11px}
+.cell.open .n{font-size:23px;color:var(--ink-paper);letter-spacing:1px;line-height:1;position:relative;z-index:2}
+.cell.open .pz{font-size:12px;color:var(--ink-paper-2);text-align:right;line-height:1.2;
+  white-space:nowrap;position:relative;z-index:2}
+.cell.open .pz small{font-size:9px;color:var(--paper-f);margin-left:1px}
+/* 中奖格：三重冗余（红框 + 浅底 + 「中」章） */
+.cell.hit{background:#FFF6D8;border:2px solid var(--red-500);padding:0 9px;justify-content:flex-start;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.7)}
+.cell.hit .n{color:var(--red-500);font-weight:600;font-size:25px}
+.cell.hit .pz{color:var(--red-500);font-size:13px;font-weight:500;margin-left:auto;margin-right:7px}
+.cell.hit .pz small{color:var(--red-500)}
+/* 「中」圆章：作为 flex 子项，不遮字 */
+.cell.hit .seal{position:relative;z-index:2;flex:none;width:21px;height:21px;border-radius:50%;
+  border:1.5px solid rgba(200,16,46,.72);display:grid;place-items:center;
+  font-size:11px;color:var(--red-500);transform:rotate(-13deg);opacity:.9;line-height:1}
+/* ×10 角签 */
+.cell.hit .mt{position:absolute;right:-1px;top:-1px;z-index:3;background:var(--red-500);
+  color:#FFF8EC;font-size:8px;padding:1px 5px;border-radius:0 2px 0 6px;letter-spacing:.5px;
+  box-shadow:0 1px 2px rgba(0,0,0,.25)}
+
+/* 票号 */
+.tk-foot{display:flex;align-items:center;gap:8px;padding:0 13px 9px}
+.tk-foot .bc{flex:1;height:15px;
+  background:repeating-linear-gradient(90deg,#2B2118 0 1px,transparent 1px 3px,#2B2118 3px 5px,transparent 5px 6px,#2B2118 6px 8px,transparent 8px 11px);
+  opacity:.8}
+.tk-foot .sn{font-size:7.5px;color:var(--ink-paper-2);letter-spacing:.3px;flex:none}
+
+/* 进度 + 按钮 */
+.prog-wrap{display:flex;align-items:center;gap:10px;margin-top:14px}
+.prog{flex:1;height:8px;border-radius:4px;background:var(--ink-600);position:relative;overflow:hidden;
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.55)}
+.prog i{position:absolute;left:0;top:0;bottom:0;width:10%;border-radius:4px;
+  background:linear-gradient(90deg,#B08D28,#D4AF37 40%,#F6E29E);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.55)}
+.prog-wrap span{font-size:11px;color:var(--gold-300);letter-spacing:.5px;flex:none}
+
+.actions{display:flex;gap:12px;margin-top:14px}
+.btn{height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;
+  font-size:15px;letter-spacing:1px;position:relative;overflow:hidden}
+.btn-gold{flex:1;color:#2B2118;font-weight:600;letter-spacing:1.5px;
+  background:linear-gradient(180deg,#FFE9A8 0%,#F6E29E 16%,#D4AF37 62%,#B08D28 100%);
+  box-shadow:inset 0 1.5px 0 rgba(255,255,255,.62), inset 0 -1.5px 0 rgba(74,54,16,.45), 0 3px 0 rgba(0,0,0,.5)}
+.btn-ghost{width:118px;flex:none;color:var(--gold-500);font-size:13px;
+  background:rgba(212,175,55,.07);border:1.5px solid rgba(212,175,55,.42)}
+/* 广告按钮（B4）：红底金边 + 播放三角 + 金边呼吸 */
+.btn-ad{flex:1;color:#FFF8EC;font-size:14px;letter-spacing:1px;
+  background:linear-gradient(180deg,#D4192F,#C8102E 55%,#8C1024);
+  border:1.5px solid var(--gold-300);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.25), 0 3px 0 rgba(0,0,0,.45), 0 0 18px rgba(212,175,55,.22);
+  animation:adBreath 2.4s ease-in-out infinite}
+@keyframes adBreath{
+  0%,100%{border-color:rgba(246,226,158,.55); box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 3px 0 rgba(0,0,0,.45),0 0 10px rgba(212,175,55,.16)}
+  50%{border-color:rgba(255,233,168,1); box-shadow:inset 0 1px 0 rgba(255,255,255,.32),0 3px 0 rgba(0,0,0,.45),0 0 22px rgba(212,175,55,.4)}
+}
+.btn-ad .play{width:0;height:0;border-left:9px solid var(--gold-300);
+  border-top:5.5px solid transparent;border-bottom:5.5px solid transparent;margin-right:8px}
+.hintline{text-align:center;font-size:10px;color:var(--text-3);letter-spacing:1px;margin-top:12px}
+/* 玩法说明条 */
+.rulebar{display:flex;align-items:center;justify-content:center;gap:9px;margin-top:12px;
+  padding:9px 10px;border-radius:8px;background:rgba(255,255,255,.028);
+  border:1px solid rgba(255,255,255,.055);font-size:10px;color:var(--text-3);letter-spacing:.5px}
+.rulebar b{color:var(--red-300);font-weight:500;margin:0 2px}
+.rulebar .sp{width:1px;height:9px;background:rgba(255,255,255,.14);flex:none}
+
+/* =========================================================
+   ③ 开奖结算
+   ========================================================= */
+.win-screen{background:
+  radial-gradient(70% 46% at 50% 34%, rgba(212,175,55,.22), rgba(212,175,55,0) 68%),
+  var(--ink-900)}
+.win-mask{position:absolute;inset:0;background:rgba(10,6,4,.72)}
+/* 遮罩之上的金色环境光（否则画面会死黑） */
+.win-glow{position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:
+    radial-gradient(86% 56% at 50% 40%, rgba(212,175,55,.50), rgba(212,175,55,.10) 55%, rgba(212,175,55,0) 78%),
+    radial-gradient(110% 56% at 50% 100%, rgba(200,16,46,.22), rgba(200,16,46,0) 72%)}
+.win-body{position:relative;z-index:3;flex:1;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;padding:0 24px 40px}
+.win-top{font-size:11px;color:rgba(212,175,55,.85);letter-spacing:3px;margin-bottom:14px}
+
+/* 金票（大奖卡） */
+.goldcard{width:326px;border-radius:16px;position:relative;overflow:hidden;
+  background:linear-gradient(168deg,#FFE9A8 0%,#F6E29E 14%,#E8C766 38%,#D4AF37 60%,#B08D28 84%,#8A6A20 100%);
+  box-shadow:0 0 0 1px rgba(74,54,16,.55), 0 0 46px rgba(212,175,55,.42), 0 18px 40px rgba(0,0,0,.55);
+  padding:22px 20px 20px;text-align:center}
+/* 斜向高光带 */
+.goldcard::before{content:"";position:absolute;top:-40%;left:-30%;width:56%;height:190%;
+  transform:rotate(-18deg);background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,.5),rgba(255,255,255,0))}
+/* 内描边 */
+.goldcard::after{content:"";position:absolute;inset:6px;border-radius:11px;
+  border:1px solid rgba(74,54,16,.32);pointer-events:none}
+.goldcard .gc-kicker{font-size:10px;letter-spacing:4px;color:#7A5C15;position:relative}
+.goldcard h3{font-size:24px;letter-spacing:6px;color:#5E3F0C;margin-top:8px;font-weight:600;
+  text-shadow:0 1px 0 rgba(255,255,255,.45);position:relative}
+.goldcard .amt{display:flex;align-items:flex-end;justify-content:center;gap:6px;margin-top:6px;position:relative}
+.goldcard .amt b{font-size:62px;line-height:1;color:#4A2F06;letter-spacing:0;font-weight:600;
+  text-shadow:0 2px 0 rgba(255,255,255,.35), 0 -1px 0 rgba(74,54,16,.3)}
+.goldcard .amt span{font-size:14px;color:#7A5C15;margin-bottom:10px;letter-spacing:1px}
+.goldcard .divider{height:1px;margin:16px 6px 12px;position:relative;
+  background:linear-gradient(90deg,transparent,rgba(94,63,12,.45),transparent)}
+.goldcard .note{font-size:11.5px;color:#6B4B12;letter-spacing:1px;line-height:1.7;position:relative}
+.goldcard .note b{color:#8C1024;font-weight:500}
+/* 倍率胶囊 */
+.mult{position:absolute;right:14px;top:16px;transform:rotate(-8deg);
+  background:var(--red-500);border:1px solid var(--gold-300);border-radius:13px;
+  padding:3px 9px;font-size:11px;color:#FFF8EC;letter-spacing:1px;z-index:3;
+  box-shadow:0 2px 6px rgba(0,0,0,.35)}
+.win-actions{width:326px;margin-top:20px}
+.win-actions .btn{margin-bottom:12px}
+.btn-solid{width:100%;height:52px;border-radius:13px;background:linear-gradient(180deg,#FFE9A8,#F6E29E 18%,#D4AF37 64%,#B08D28);
+  color:#2B2118;font-size:16px;font-weight:600;letter-spacing:2px;
+  box-shadow:inset 0 1.5px 0 rgba(255,255,255,.62),0 3px 0 rgba(0,0,0,.5)}
+.btn-ad.full{width:100%;height:52px;border-radius:13px;flex:none;font-size:15px}
+.win-foot{font-size:10px;color:var(--text-3);letter-spacing:2px;margin-top:4px}
+
+/* 彩纸（手写 24 片，无 JS） */
+.confetti{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden}
+.confetti i{position:absolute;display:block;border-radius:1px;opacity:.92}
+.confetti i.g{background:var(--gold-500);box-shadow:0 0 8px rgba(212,175,55,.6)}
+.confetti i.r{background:var(--red-500)}
+.confetti i.w{background:#FFF8EC}
+.confetti i.e{background:var(--green-300)}
+
+/* =========================================================
+   ④ 转盘
+   ========================================================= */
+.wheel-body{flex:1;display:flex;flex-direction:column;align-items:center;padding:6px 16px 0}
+.energy{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--warn);letter-spacing:.5px}
+.energy .bolt{width:9px;height:14px;background:var(--warn);clip-path:polygon(52% 0,0 58%,42% 58%,34% 100%,100% 42%,54% 42%)}
+.wheel-wrap{position:relative;width:330px;height:330px;margin-top:14px;flex:none}
+.wheel-rim{position:absolute;inset:0;border-radius:50%;
+  background:conic-gradient(from 0deg,#8A6A20,#F6E29E 12%,#D4AF37 26%,#8A6A20 40%,#F6E29E 54%,#D4AF37 68%,#8A6A20 82%,#F6E29E 96%,#8A6A20);
+  box-shadow:0 0 30px rgba(212,175,55,.3), inset 0 0 12px rgba(0,0,0,.55), 0 14px 34px rgba(0,0,0,.6)}
+.wheel-face{position:absolute;inset:9px;border-radius:50%;overflow:hidden;
+  background:conic-gradient(from -22.5deg,
+    #C8102E 0deg 45deg,
+    #00713F 45deg 90deg,
+    #A80C26 90deg 135deg,
+    #00603A 135deg 180deg,
+    #C8102E 180deg 225deg,
+    #00713F 225deg 270deg,
+    #A80C26 270deg 315deg,
+    #00603A 315deg 360deg);
+  box-shadow:inset 0 0 26px rgba(0,0,0,.55)}
+/* 扇区分隔金线 */
+.wheel-face::after{content:"";position:absolute;inset:0;border-radius:50%;
+  background:repeating-conic-gradient(from -22.5deg, rgba(246,226,158,.6) 0deg 0.7deg, transparent 0.7deg 45deg)}
+.wl{position:absolute;transform:translate(-50%,-50%);font-size:13px;letter-spacing:1px;
+  color:#FFF8EC;text-shadow:0 1px 2px rgba(0,0,0,.6);white-space:nowrap;z-index:2}
+.wl.gold{color:var(--gold-300)}
+.hub{position:absolute;left:50%;top:50%;width:78px;height:78px;transform:translate(-50%,-50%);
+  border-radius:50%;display:grid;place-items:center;z-index:4;
+  background:radial-gradient(circle at 36% 28%,#FFF3CB,#F6E29E 24%,#D4AF37 62%,#8A6A20);
+  border:2px solid #6B5214;
+  box-shadow:0 4px 0 rgba(0,0,0,.45), 0 0 24px rgba(212,175,55,.4), inset 0 2px 6px rgba(255,255,255,.5)}
+.hub b{font-size:24px;color:#4A2F06;letter-spacing:2px;line-height:1;text-shadow:0 1px 0 rgba(255,255,255,.4)}
+/* 指针：金边红芯三角，尖端插入盘面 */
+.pointer{position:absolute;left:50%;top:-16px;transform:translateX(-50%);z-index:6;
+  width:34px;height:54px;
+  background:linear-gradient(180deg,#FFE9A8,#F6E29E 22%,#D4AF37 60%,#8A6A20);
+  clip-path:polygon(0 0,100% 0,50% 100%);
+  filter:drop-shadow(0 4px 5px rgba(0,0,0,.7))}
+.pointer::after{content:"";position:absolute;left:4px;right:4px;top:0;bottom:9px;
+  background:linear-gradient(180deg,#E4402F 0%,#C8102E 52%,#8C1024 100%);
+  clip-path:polygon(0 0,100% 0,50% 100%)}
+.wheel-read{text-align:center;margin-top:20px}
+.wheel-read .k{font-size:10px;color:var(--text-3);letter-spacing:3px}
+.wheel-read .v{font-size:21px;color:var(--gold-300);letter-spacing:3px;margin-top:6px}
+/* 电量条 */
+.ebar{width:100%;margin-top:16px}
+.ebar .hd{display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);
+  letter-spacing:1px;margin-bottom:7px}
+.ebar .hd b{color:var(--warn);font-weight:500;letter-spacing:.5px}
+/* 最近结果 */
+.recent{display:flex;align-items:center;gap:6px;margin-top:14px;width:100%}
+.recent .rl{font-size:10px;color:var(--text-3);letter-spacing:2px;flex:none;margin-right:2px}
+.recent .rc{flex:1;text-align:center;font-size:10px;color:var(--text-2);letter-spacing:.5px;
+  padding:5px 0;border-radius:7px;background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.06)}
+.recent .rc.g{color:var(--gold-300);border-color:rgba(212,175,55,.22);background:rgba(212,175,55,.07)}
+.wheel-act{width:100%;padding:0;margin-top:auto}
+.wheel-note{font-size:10px;color:var(--text-3);text-align:center;letter-spacing:1px;margin:12px 0 16px}
+
+/* =========================================================
+   ⑤ 三套皮肤对照
+   ========================================================= */
+.skin-body{flex:1;padding:2px 16px 0;display:flex;flex-direction:column;gap:12px;overflow:hidden}
+.skin-item{position:relative}
+.skin-item .lab{display:flex;align-items:baseline;gap:8px;margin-bottom:6px}
+.skin-item .lab b{font-size:12px;color:var(--text);letter-spacing:1.5px;font-weight:500}
+.skin-item .lab span{font-size:10px;color:var(--text-3);letter-spacing:.5px}
+.skin-item .lab i{font-style:normal;font-size:9px;color:var(--gold-700);border:1px solid rgba(212,175,55,.25);
+  padding:1px 5px;border-radius:6px;margin-left:auto}
+
+/* 福彩小票 */
+.st-fucai{height:122px;border-radius:12px;background:var(--paper-2);border:1px solid var(--red-400);
+  position:relative;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,.45)}
+.st-fucai .plaque{height:50px;background:linear-gradient(180deg,#E4402F,#C8102E 55%,#A00E24);
+  display:flex;align-items:center;gap:9px;padding:0 11px;
+  border-bottom:2px solid var(--gold-500);
+  box-shadow:inset 0 2px 0 rgba(255,233,168,.26)}
+.st-fucai .pmark{width:22px;height:22px;border-radius:50%;border:1px solid var(--gold-300);
+  display:grid;place-items:center;font-size:12px;color:var(--gold-300);flex:none;line-height:1}
+.st-fucai .plaque b{font-size:20px;letter-spacing:5px;color:var(--gold-300);font-weight:600;
+  text-shadow:0 1px 2px rgba(107,12,27,.85), 0 0 10px rgba(255,233,168,.25)}
+.st-fucai .pden{margin-left:auto;background:#FFF8EC;color:var(--red-500);font-size:10px;
+  padding:2px 7px;border-radius:3px;letter-spacing:0;flex:none}
+.st-fucai .inner{border:1px solid rgba(226,58,46,.5);border-radius:6px;margin:7px 10px 0;
+  height:50px;display:flex;align-items:center;gap:8px;padding:0 10px;
+  background:rgba(251,247,239,.5)}
+.st-fucai .sq{width:32px;height:32px;border:1px solid var(--paper-f);border-radius:4px;
+  background:rgba(251,247,239,.55);display:grid;place-items:center;font-size:16px;color:var(--red-400)}
+.st-fucai .foo{font-size:8px;letter-spacing:1.5px;color:var(--ink-paper-2);position:absolute;left:12px;bottom:3px}
+
+/* 体彩小票 */
+.st-ticai{height:122px;border-radius:4px;background:var(--paper);border:1px solid var(--red-500);
+  position:relative;overflow:hidden;box-shadow:0 3px 0 rgba(0,0,0,.42), 0 10px 22px rgba(0,0,0,.45)}
+.st-ticai .band{height:46px;background:linear-gradient(180deg,#D4192F,#C8102E 60%,#A80C26);
+  padding:6px 10px;position:relative;box-shadow:inset 0 1px 0 rgba(255,255,255,.2)}
+.st-ticai .band .kk{font-size:7px;letter-spacing:2px;color:rgba(255,248,236,.7)}
+.st-ticai .band b{display:block;font-size:19px;letter-spacing:3px;color:#FFF8EC;margin-top:1px;font-weight:600}
+.st-ticai .band .dn{position:absolute;right:9px;bottom:7px;background:#FFF8EC;border-radius:3px;
+  padding:1px 6px;font-size:11px;color:var(--red-500)}
+.st-ticai .gline{height:3px;background:var(--green-500)}
+.st-ticai .cells{display:grid;grid-template-columns:1fr 1fr 1fr;gap:5px;padding:7px 10px}
+.st-ticai .cells i{height:22px;border-radius:3px;display:grid;place-items:center;font-size:8px;color:#6E7683;
+  background:linear-gradient(150deg,#DCE1E8,#B9C0CB 60%,#8A929F);border:1px solid rgba(43,33,24,.2)}
+.st-ticai .cells i.on{background:#FFF6D8;border:1.5px solid var(--red-500);color:var(--red-500);font-size:10px}
+
+/* HOT 小票 */
+.st-hot{height:122px;border-radius:10px;background:linear-gradient(155deg,#191233,#0B0918 62%);
+  border:1px solid rgba(255,46,136,.4);position:relative;overflow:hidden;
+  box-shadow:0 0 26px rgba(255,46,136,.22), 0 10px 22px rgba(0,0,0,.55)}
+.st-hot::before{content:"";position:absolute;left:-26px;top:-20px;width:44px;height:180px;
+  transform:rotate(9deg);
+  background:linear-gradient(180deg,#FF2E88,#8B5CF6);opacity:.85}
+.st-hot .in{position:absolute;left:34px;right:10px;top:0;bottom:0;padding:11px 0 0}
+.st-hot .in h4{font-size:23px;letter-spacing:2px;color:#fff;font-style:italic;
+  text-shadow:0 0 6px rgba(255,46,136,1), 0 0 16px rgba(255,46,136,.85), 0 0 30px rgba(255,46,136,.5), 0 1px 0 rgba(0,0,0,.4)}
+.st-hot .in .sub{font-size:8px;letter-spacing:3px;color:var(--neon-cyan);margin-top:1px}
+.st-hot .row{display:flex;gap:5px;margin-top:9px}
+.st-hot .row i{flex:1;height:26px;border-radius:4px;background:#141024;border:1px solid rgba(34,224,255,.32);
+  display:grid;place-items:center;font-size:10px;color:var(--neon-lime);letter-spacing:0}
+.st-hot .row i.dim{color:#5B5878;border-color:rgba(255,255,255,.08)}
+.st-hot .dn{position:absolute;right:10px;bottom:8px;font-size:9px;letter-spacing:1px;color:var(--neon-cyan)}
+
+.note-box{margin:0;padding:10px 13px;border-radius:10px;
+  background:rgba(212,175,55,.05);border:1px solid rgba(212,175,55,.16);
+  font-size:10.5px;line-height:1.9;color:var(--text-3);letter-spacing:.5px}
+.note-box b{color:var(--gold-300);font-weight:500}
+.note-box em{font-style:normal;color:var(--red-300)}
+/* 皮肤变量对照表 */
+.cmp{margin-top:0;border-radius:8px;overflow:hidden;border:1px solid rgba(255,255,255,.07);
+  font-size:9.5px;letter-spacing:.5px;background:rgba(255,255,255,.015)}
+.cmp .row{display:grid;grid-template-columns:50px 1fr 1fr 1fr;align-items:center}
+.cmp .row+.row{border-top:1px solid rgba(255,255,255,.055)}
+.cmp .row span{padding:6px 4px;text-align:center;color:var(--text-2)}
+.cmp .row span:first-child{color:var(--text-3);background:rgba(255,255,255,.03);
+  letter-spacing:1px;font-size:9px}
+.cmp .row.head span{font-size:9px;padding:6px 4px;background:rgba(212,175,55,.06);letter-spacing:1px}
+.cmp .row.head span:nth-child(2){color:var(--red-300)}
+.cmp .row.head span:nth-child(3){color:var(--green-300)}
+.cmp .row.head span:nth-child(4){color:#FF7FB4}
+
+/* 页脚 */
+.footer{max-width:1400px;margin:40px auto 0;padding:24px 32px 0;border-top:1px solid rgba(74,54,38,.6);
+  font-size:11px;color:var(--text-3);letter-spacing:1px;line-height:2}
+.footer b{color:var(--gold-700);font-weight:500}
+.footer-num{margin-bottom:10px;padding:10px 14px;border-radius:8px;
+  background:rgba(212,175,55,.05);border:1px solid rgba(212,175,55,.16);
+  color:var(--text-2);line-height:1.9}
+.footer-num b{color:var(--gold-300)}
+</style>
+</head>
+<body>
+
+<!-- ===================== 页头说明条 ===================== -->
+<div class="topbar">
+  <div class="brand">
+    <b>好运游戏厅</b>
+    <span>纸感印刷 × 暖金暗场 × 三套票面皮肤</span>
+  </div>
+  <div class="meta">
+    <span>竖屏 390×844 ｜ 逻辑 360×640dp ｜ 纯 NanoVG 可绘制</span>
+    <span class="pill-num">数值为 v2.0 演示口径</span>
+    <span class="pill-ver">art-bible v2.0</span>
+  </div>
+</div>
+
+<!-- 色板条（与 art-bible 完全同值） -->
+<div class="palette">
+  <i style="background:#120C09"></i><i style="background:#241811"></i><i style="background:#4A3626"></i>
+  <i style="background:#8A6A20"></i><i style="background:#D4AF37"></i><i style="background:#F6E29E"></i>
+  <i style="background:#C8102E"></i><i style="background:#8C1024"></i>
+  <i style="background:#00A15C"></i><i style="background:#00713F"></i>
+  <i style="background:#C9B99B"></i><i style="background:#E2D5BE"></i><i style="background:#FBF7EF"></i>
+  <i style="background:#FF2E88"></i><i style="background:#8B5CF6"></i><i style="background:#22E0FF"></i>
+</div>
+<div class="palette-cap">INK · GOLD · RED · GREEN · PAPER · NEON</div>
+
+<div class="stage">
+
+  <!-- ============================================================
+       ① 大厅
+       ============================================================ -->
+  <div class="frame">
+    <div class="cap"><i>01</i><b>大厅</b><span>默认入口 · 三套皮肤并列展示</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="layer">
+          <div class="statusbar">
+            <span>10:24</span>
+            <span style="display:flex;align-items:center">
+              <span class="sig"><b></b><b></b><b></b></span>
+              <span class="batt"></span>
+            </span>
+          </div>
+
+          <div class="hall">
+            <div class="hall-title">
+              <h1>好运游戏厅</h1>
+              <p>今日宜 <em>·</em> 开张 <em>·</em> 手气正旺</p>
+            </div>
+
+            <div class="hud">
+              <div class="chip-cur"><span class="coin"></span><b>148,200</b></div>
+              <div class="chip-cur dim"><span class="gem"></span><b>3,200</b></div>
+              <div class="chip-cur dim"><span class="tkt"></span><b>8</b></div>
+            </div>
+
+            <div class="sec"><h2>今日可玩</h2><span class="ln"></span><span class="tag">限时</span></div>
+
+            <!-- 体彩（主打） -->
+            <div class="tcard s-ticai">
+              <div class="tc-main">
+                <h3><em class="hb">主推</em>好运十倍<span class="lv">Lv.2</span></h3>
+                <p>体彩 · 顶呱刮<span class="dot">·</span>中奖率 45%</p>
+              </div>
+              <div class="tc-cut"></div>
+              <div class="tc-price">
+                <div class="p">200<small>币</small></div>
+                <div class="u">剩 8 张</div>
+              </div>
+              <div class="tc-buy">买票</div>
+            </div>
+
+            <!-- 福彩 -->
+            <div class="tcard s-fucai">
+              <div class="tc-main">
+                <h3>晨光<span class="lv">Lv.1</span></h3>
+                <p>福彩 · 经典<span class="dot">·</span>中奖率 35%</p>
+              </div>
+              <div class="tc-cut"></div>
+              <div class="tc-price">
+                <div class="p">100<small>币</small></div>
+                <div class="u">不限量</div>
+              </div>
+              <div class="tc-buy">买票</div>
+            </div>
+
+            <!-- HOT -->
+            <div class="tcard s-hot">
+              <div class="tc-main">
+                <h3>热力</h3>
+                <p>美式 · HOT<span class="dot">·</span>中奖率 32%</p>
+              </div>
+              <div class="tc-cut"></div>
+              <div class="tc-price">
+                <div class="p">4,000<small>币</small></div>
+                <div class="u">今日 1 次</div>
+              </div>
+              <div class="tc-buy">买票</div>
+            </div>
+
+            <div class="sec"><h2>更多玩法</h2><span class="ln"></span></div>
+            <div class="grid2">
+              <div class="mini">
+                <h4>幸运转盘</h4>
+                <p>电量 6 / 10</p>
+                <div class="ring"><b>6</b></div>
+              </div>
+              <div class="mini cat">
+                <h4>招财猫</h4>
+                <p>抽卡 · 160 钻</p>
+                <div class="ring"><b>招</b></div>
+              </div>
+            </div>
+
+            <div class="sec"><h2>今日战绩</h2><span class="ln"></span><span class="tag">已更新</span></div>
+            <div class="stats">
+              <div class="st"><b>12</b><span>已刮张数</span></div>
+              <div class="st"><b>4</b><span>中奖次数</span></div>
+              <div class="st"><b>128,600</b><span>累计票房</span></div>
+            </div>
+          </div>
+
+          <div class="dock">
+            <div class="it on"><div class="ic">厅</div></div>
+            <div class="it"><div class="ic">转</div></div>
+            <div class="it"><div class="ic">机</div></div>
+            <div class="it"><div class="ic">设</div></div>
+          </div>
+          <div class="homebar"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       ② 刮卡页 · 体彩顶呱刮
+       ============================================================ -->
+  <div class="frame">
+    <div class="cap"><i>02</i><b>刮卡页 · 好运十倍</b><span>主打皮肤 · 含刮层质感</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="layer">
+          <div class="statusbar">
+            <span>10:26</span>
+            <span style="display:flex;align-items:center">
+              <span class="sig"><b></b><b></b><b></b></span>
+              <span class="batt"></span>
+            </span>
+          </div>
+
+          <div class="topnav">
+            <div class="back"><i></i></div>
+            <h2>好运十倍</h2>
+            <div class="act">规则</div>
+          </div>
+
+          <div class="scratch-body">
+            <div class="ticket">
+              <div class="grain"></div>
+
+              <div class="tk-head">
+                <div class="kicker">顶呱刮 · 即开型</div>
+                <div class="row">
+                  <h3>好运十倍</h3>
+                  <div class="denom"><b>200</b><span>币</span></div>
+                </div>
+                <div class="serial">NO. 20261106-0417</div>
+              </div>
+              <div class="tk-green"></div>
+
+              <div class="tk-win">
+                <div class="lb">中奖号码<em>WINNING</em></div>
+                <div class="num"><b>23</b></div>
+                <div class="hint">刮出相同号码<br><b>即中</b>下方奖金</div>
+              </div>
+
+              <div class="grid">
+                <div class="cell foil"><span>刮</span></div>
+                <!-- 命中 + 十倍：100 × 10 = 1,000（与结算页一致） -->
+                <div class="cell open hit">
+                  <span class="n">23</span>
+                  <span class="pz">100<small>币</small></span>
+                  <span class="seal">中</span>
+                  <span class="mt">×10</span>
+                </div>
+
+                <div class="cell open">
+                  <span class="n">17</span>
+                  <span class="pz">40<small>币</small></span>
+                </div>
+                <div class="cell foil"><span>刮</span></div>
+
+                <div class="cell open">
+                  <span class="n">08</span>
+                  <span class="pz">100<small>币</small></span>
+                </div>
+                <div class="cell foil"><span>刮</span></div>
+
+                <div class="cell foil"><span>刮</span></div>
+                <div class="cell foil"><span>刮</span></div>
+
+                <div class="cell foil"><span>刮</span></div>
+                <div class="cell foil"><span>刮</span></div>
+              </div>
+
+              <div class="tk-foot">
+                <div class="bc"></div>
+                <div class="sn">身 份 码 6 2 1 1 0 6</div>
+              </div>
+            </div>
+
+            <div class="prog-wrap">
+              <div class="prog"><i style="width:30%"></i></div>
+              <span>已刮 3 / 10</span>
+            </div>
+
+            <div class="rulebar">
+              <span>号码与中奖号码相同 · 即中下方奖金</span>
+              <span class="sp"></span>
+              <span>出现<b>×10</b>翻十倍</span>
+            </div>
+
+            <div class="actions">
+              <div class="btn btn-ghost">全部刮开</div>
+              <div class="btn btn-ad"><span class="play"></span>看广告 ×2 领取</div>
+            </div>
+
+            <div class="hintline">本票期望产出 1,600 币 · 已中 1 注</div>
+          </div>
+
+          <div class="homebar" style="margin-top:auto"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       ③ 开奖结算
+       ============================================================ -->
+  <div class="frame">
+    <div class="cap"><i>03</i><b>开奖结算 · 大奖</b><span>金票 + 彩纸 + ×10 倍率</span></div>
+    <div class="phone">
+      <div class="screen win-screen">
+        <div class="win-mask"></div>
+        <div class="win-glow"></div>
+
+        <!-- 彩纸 24 片 -->
+        <div class="confetti">
+          <i class="g" style="left:8%;top:12%;width:5px;height:9px;transform:rotate(24deg)"></i>
+          <i class="r" style="left:18%;top:6%;width:4px;height:8px;transform:rotate(-38deg)"></i>
+          <i class="w" style="left:30%;top:16%;width:5px;height:5px;transform:rotate(12deg)"></i>
+          <i class="e" style="left:44%;top:7%;width:4px;height:9px;transform:rotate(56deg)"></i>
+          <i class="g" style="left:57%;top:14%;width:6px;height:4px;transform:rotate(-22deg)"></i>
+          <i class="r" style="left:70%;top:8%;width:4px;height:8px;transform:rotate(34deg)"></i>
+          <i class="w" style="left:82%;top:18%;width:5px;height:7px;transform:rotate(-48deg)"></i>
+          <i class="g" style="left:92%;top:10%;width:4px;height:9px;transform:rotate(18deg)"></i>
+
+          <i class="r" style="left:4%;top:34%;width:5px;height:8px;transform:rotate(-14deg)"></i>
+          <i class="g" style="left:14%;top:48%;width:6px;height:4px;transform:rotate(62deg)"></i>
+          <i class="w" style="left:88%;top:40%;width:4px;height:8px;transform:rotate(28deg)"></i>
+          <i class="e" style="left:95%;top:54%;width:5px;height:6px;transform:rotate(-36deg)"></i>
+
+          <i class="g" style="left:9%;top:70%;width:5px;height:8px;transform:rotate(44deg)"></i>
+          <i class="r" style="left:22%;top:80%;width:4px;height:7px;transform:rotate(-20deg)"></i>
+          <i class="w" style="left:36%;top:88%;width:5px;height:5px;transform:rotate(16deg)"></i>
+          <i class="e" style="left:52%;top:82%;width:4px;height:9px;transform:rotate(-54deg)"></i>
+          <i class="g" style="left:66%;top:90%;width:6px;height:4px;transform:rotate(30deg)"></i>
+          <i class="r" style="left:78%;top:78%;width:5px;height:7px;transform:rotate(-12deg)"></i>
+          <i class="w" style="left:90%;top:86%;width:4px;height:8px;transform:rotate(48deg)"></i>
+
+          <i class="g" style="left:26%;top:26%;width:4px;height:6px;transform:rotate(-66deg)"></i>
+          <i class="r" style="left:74%;top:26%;width:5px;height:6px;transform:rotate(22deg)"></i>
+          <i class="e" style="left:46%;top:36%;width:3px;height:6px;transform:rotate(78deg)"></i>
+          <i class="w" style="left:60%;top:60%;width:4px;height:5px;transform:rotate(-30deg)"></i>
+          <i class="g" style="left:34%;top:64%;width:4px;height:7px;transform:rotate(40deg)"></i>
+          <i class="r" style="left:68%;top:68%;width:4px;height:6px;transform:rotate(-52deg)"></i>
+        </div>
+
+        <div class="layer">
+          <div class="statusbar">
+            <span>10:27</span>
+            <span style="display:flex;align-items:center">
+              <span class="sig"><b></b><b></b><b></b></span>
+              <span class="batt"></span>
+            </span>
+          </div>
+
+          <div class="win-body">
+            <div class="win-top">今 日 第 3 次 中 奖</div>
+
+            <div class="goldcard">
+              <div class="mult">×10 十倍</div>
+              <div class="gc-kicker">好 运 十 倍</div>
+              <h3>中奖啦</h3>
+              <div class="amt"><b>1,000</b><span>币</span></div>
+              <div class="divider"></div>
+              <div class="note">
+                第 2 注命中「23」 · 基础 100 币<br>
+                触发 <b>十倍</b> · 100 × 10 = 1,000 币
+              </div>
+            </div>
+
+            <div class="win-actions">
+              <div class="btn btn-solid">收入囊中</div>
+              <div class="btn btn-ad full"><span class="play"></span>看广告 ×2 领取</div>
+              <div class="win-foot">再刮 2 张即可升级 好运十倍 Lv.3</div>
+            </div>
+          </div>
+
+          <div class="homebar"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       ④ 转盘
+       ============================================================ -->
+  <div class="frame">
+    <div class="cap"><i>04</i><b>幸运转盘</b><span>红绿扇区 + 烫金盘毂</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="layer">
+          <div class="statusbar">
+            <span>10:31</span>
+            <span style="display:flex;align-items:center">
+              <span class="sig"><b></b><b></b><b></b></span>
+              <span class="batt"></span>
+            </span>
+          </div>
+
+          <div class="topnav">
+            <div class="back"><i></i></div>
+            <h2>幸运转盘</h2>
+            <div class="act energy" style="width:60px"><span class="bolt"></span>6 / 10</div>
+          </div>
+
+          <div class="wheel-body">
+            <div class="wheel-wrap">
+              <div class="wheel-rim"></div>
+              <div class="wheel-face">
+
+              </div>
+              <!-- 8 个扇区标签（径向 100px，落点对准扇区中心线） -->
+              <span class="wl" style="left:165px;top:65px">2 万</span>
+              <span class="wl" style="left:236px;top:94px">5 票</span>
+              <span class="wl" style="left:265px;top:165px">10 钻</span>
+              <span class="wl" style="left:236px;top:236px">再转</span>
+              <span class="wl" style="left:165px;top:265px">8,000</span>
+              <span class="wl" style="left:94px;top:236px">碎片</span>
+              <span class="wl" style="left:65px;top:165px">2,000</span>
+              <span class="wl gold" style="left:94px;top:94px">大奖</span>
+
+              <div class="hub"><b>转</b></div>
+              <div class="pointer"></div>
+            </div>
+
+            <div class="wheel-read">
+              <div class="k">本 次 指 针</div>
+              <div class="v">金 币 · 2 万</div>
+            </div>
+
+            <div class="ebar">
+              <div class="hd"><span>剩余电量</span><b>6 / 10</b></div>
+              <div class="prog"><i style="width:60%"></i></div>
+            </div>
+
+            <div class="recent">
+              <span class="rl">最近</span>
+              <span class="rc">5 票</span>
+              <span class="rc">10 钻</span>
+              <span class="rc">8,000</span>
+            </div>
+
+            <div class="wheel-act">
+              <div class="btn btn-gold">消耗 1 电 · 开始</div>
+              <div class="wheel-note">转盘决定下一步去哪，不决定输赢</div>
+            </div>
+          </div>
+
+          <div class="homebar"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================
+       ⑤ 三套皮肤对照
+       ============================================================ -->
+  <div class="frame">
+    <div class="cap"><i>05</i><b>三套票面皮肤对照</b><span>关闭颜色后仍可区分</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="layer">
+          <div class="statusbar">
+            <span>10:35</span>
+            <span style="display:flex;align-items:center">
+              <span class="sig"><b></b><b></b><b></b></span>
+              <span class="batt"></span>
+            </span>
+          </div>
+
+          <div class="topnav">
+            <div class="back"><i></i></div>
+            <h2>票面皮肤</h2>
+            <div class="act">说明</div>
+          </div>
+
+          <div class="skin-body">
+
+            <!-- 福彩 -->
+            <div class="skin-item">
+              <div class="lab"><b>福彩系</b><span>红金 · 拱形匾额 · 旧纸</span><i>中频</i></div>
+              <div class="st-fucai">
+                <div class="plaque">
+                  <span class="pmark">福</span>
+                  <b>晨光</b>
+                  <span class="pden">100 币</span>
+                </div>
+                <div class="inner">
+                  <div class="sq">福</div>
+                  <div class="sq">禄</div>
+                  <div class="sq">寿</div>
+                  <div style="flex:1;text-align:right;font-size:9px;color:var(--ink-paper-2);line-height:1.6">
+                    圆角 12 · 云纹<br>哑光银涂层
+                  </div>
+                </div>
+                <div class="foo">中 国 福 利 彩 票</div>
+              </div>
+            </div>
+
+            <!-- 体彩 -->
+            <div class="skin-item">
+              <div class="lab"><b>体彩顶呱刮系</b><span>红绿白 · 表格栅格 · 新纸</span><i>主打</i></div>
+              <div class="st-ticai">
+                <div class="band">
+                  <div class="kk">顶呱刮 · 即开型</div>
+                  <b>好运十倍</b>
+                  <span class="dn">200 币</span>
+                </div>
+                <div class="gline"></div>
+                <div class="cells">
+                  <i>刮</i><i>刮</i><i>刮</i>
+                  <i>刮</i><i class="on">23</i><i>刮</i>
+                </div>
+              </div>
+            </div>
+
+            <!-- HOT -->
+            <div class="skin-item">
+              <div class="lab"><b>HOT 系</b><span>霓虹 · 斜切速度线 · 深紫黑</span><i>低频</i></div>
+              <div class="st-hot">
+                <div class="in">
+                  <h4>热力</h4>
+                  <div class="sub">H O T · S C R A T C H</div>
+                  <div class="row">
+                    <i>金</i><i class="dim">刮</i><i>金</i>
+                    <i class="dim">刮</i><i>1,200</i>
+                  </div>
+                </div>
+                <div class="dn">4,000 币 · 今日 1 次</div>
+              </div>
+            </div>
+
+            <div class="note-box">
+              <b>区分依据（不看颜色）：</b>福彩＝<em>拱形匾额 + 大圆角</em>；体彩＝<em>平顶红条 + 直角网格</em>；HOT＝<em>左倾色块 + 斜纹</em>。
+              三者在灰度截图下依然一眼可分。
+            </div>
+
+            <div class="cmp">
+              <div class="row head"><span>维度</span><span>福彩系</span><span>体彩系</span><span>HOT 系</span></div>
+              <div class="row"><span>纸底</span><span>米黄</span><span>纸白</span><span>紫黑</span></div>
+              <div class="row"><span>骨架</span><span>匾额</span><span>表格</span><span>斜切</span></div>
+              <div class="row"><span>圆角</span><span>12</span><span>4</span><span>10</span></div>
+              <div class="row"><span>阴影</span><span>柔</span><span>硬</span><span>发光</span></div>
+            </div>
+          </div>
+
+          <div class="homebar"><i></i></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="footer">
+  <div class="footer-num">
+    <b>数值口径：</b>本页所有金额为 <b>v2.0 演示口径</b>，实际以 <b>GDD v2.0 第 5.4 节数值表</b>为准 ——
+    晨光 100 ／ 雨后 400 ／ 烫金 1,600 ／ 丝绒 6,000 ／ 夜光 24,000 ／ 霜花 100,000 ／ 好运十倍 200 ／ 热力 4,000。
+  </div>
+  <b>色值来源：</b>docs/art/art-bible-v2.md §2 —— 本页所有颜色、圆角、阴影均与文档同名 Token 一一对应。<br>
+  <b>可绘制性：</b>全部视觉由渐变 / 圆角矩形 / 描边 / 多层半透明叠画构成，无位图、无图标字体、无非 CJK 符号，可直接由 NanoVG 代码实现。<br>
+  <b>字体：</b>NotoSansSC 单字重；粗体靠「同文本偏移 0.6dp 重绘」伪造，大标题靠描边实现。
+</div>
+
+</body>
+</html>
