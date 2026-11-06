@@ -1,6 +1,6 @@
 -- ============================================================================
--- 好运游戏厅 · v0.4（完整闭环版）
--- 功能：6 种福彩票 + HOT 全收票 + 幸运转盘 + 手机系统（抽卡/员工）+ 离线收益 + 存档
+-- 好运游戏厅 · v0.9（v2.1 多局票结构）
+-- 功能：10 款多局刮刮票（五档面额）+ 幸运转盘 + 手机系统（抽卡/员工）+ 离线收益 + 存档
 -- 架构：引擎层(Lua) 只做渲染与输入；结果生成遵循「先抽奖级，再倒填符号」
 -- 数值来源：data/tickets.csv / ticket_prizes.csv / wheel.csv / gacha.csv / GDD v1.1
 -- ============================================================================
@@ -12,20 +12,69 @@ local cjson = (pcall(require, "cjson")) and require("cjson") or nil
 -- 1. 数值配置
 -- ============================================================================
 
--- 福彩票（data/tickets.csv + ticket_prizes.csv；unlock=累计刮卡数解锁，T5/T6 待接广告/签到）
-local TICKETS = {
-    { id="T1", name="晨光", price=5,   unlock=0,   color={245,240,230}, tiers={
-        {m=0,p=0.6500,v=0},{m=3,p=0.2400,v=8},{m=5,p=0.0800,v=20},{m=7,p=0.0260,v=80},{m=9,p=0.0040,v=300} } },
-    { id="T2", name="雨后", price=20,  unlock=15,  color={122,154,140}, tiers={
-        {m=0,p=0.6800,v=0},{m=3,p=0.2100,v=32},{m=5,p=0.0800,v=90},{m=7,p=0.0270,v=380},{m=9,p=0.0030,v=2000} } },
-    { id="T3", name="烫金", price=80,  unlock=40,  color={201,162,39},  tiers={
-        {m=0,p=0.7000,v=0},{m=3,p=0.1950,v=130},{m=5,p=0.0780,v=400},{m=7,p=0.0240,v=1800},{m=9,p=0.0030,v=12000} } },
-    { id="T4", name="丝绒", price=300, unlock=100, color={142,43,53},   tiers={
-        {m=0,p=0.7300,v=0},{m=3,p=0.1700,v=480},{m=5,p=0.0720,v=1500},{m=7,p=0.0255,v=8000},{m=9,p=0.0025,v=60000} } },
-    { id="T5", name="夜光", price=1200,unlock=0, unlockAds=3, color={74,111,165},  tiers={
-        {m=0,p=0.7600,v=0},{m=3,p=0.1500,v=2000},{m=5,p=0.0650,v=7000},{m=7,p=0.0230,v=40000},{m=9,p=0.0020,v=300000} } },
-    { id="T6", name="霜花", price=5000,unlock=0, unlockStreak=3, color={155,196,221}, tiers={
-        {m=0,p=0.8000,v=0},{m=3,p=0.1200,v=9000},{m=5,p=0.0540,v=30000},{m=7,p=0.0240,v=180000},{m=9,p=0.0020,v=2000000} } },
+-- ============================================================================
+-- 票种表（v2.1 多局结构 · 10 款 · 五档面额）
+-- 面额＝真实档位（只印在票面）；票价＝金币（1 元 = 200 币）
+-- judge: "symbol" 找目标符号 / "number" 对上幸运号
+-- zones: 每个玩法区（区与区兼中兼得）
+-- ============================================================================
+local TICKET_DEFS = {
+    { id="dawn",   name="晨光",  yuan=5,  price=1000,  rtp=1.55, judge="symbol", target="福",
+      zones={ {cols=4, rows=2, label="找福 · 4 次"} }, skin="zodiac", unlock=0 },
+    { id="rain",   name="雨后",  yuan=10, price=2000,  rtp=1.70, judge="number", lucky=1,
+      zones={ {cols=3, rows=4, label="对号 · 12 次"} }, skin="green", unlock=0 },
+    { id="dew",    name="露白",  yuan=5,  price=1000,  rtp=1.55, judge="number", lucky=2,
+      zones={ {cols=3, rows=3, label="双号对折 · 9 次"} }, skin="ink", unlock=3 },
+    { id="fold",   name="对折",  yuan=10, price=2000,  rtp=1.70, judge="number", lucky=2,
+      zones={ {cols=5, rows=2, label="双号对折 · 10 次"} }, skin="red", unlock=8 },
+    { id="wick",   name="灯芯",  yuan=10, price=2000,  rtp=1.70, judge="symbol", target="喜",
+      zones={ {cols=3, rows=4, label="找喜 · 12 次"} }, skin="amber", unlock=14 },
+    { id="gild",   name="烫金",  yuan=20, price=4000,  rtp=1.85, judge="symbol", target="禄",
+      zones={ {cols=4, rows=3, label="玩法一 · 找禄"}, {cols=4, rows=2, label="玩法二 · 找禄"} },
+      skin="crimson", unlock=22 },
+    { id="emboss", name="压纹",  yuan=20, price=4000,  rtp=1.85, judge="symbol", target="寿",
+      zones={ {cols=4, rows=3, label="玩法一 · 找寿"}, {cols=4, rows=2, label="玩法二 · 找寿"} },
+      skin="wedding", unlock=34 },
+    { id="scroll", name="长卷",  yuan=30, price=6000,  rtp=2.10, judge="number", lucky=2,
+      zones={ {cols=4, rows=4, label="玩法一 · 对号"}, {cols=4, rows=3, label="玩法二 · 对号"} },
+      skin="dunhuang", unlock=48 },
+    { id="glow",   name="夜光",  yuan=30, price=6000,  rtp=2.10, judge="symbol", target="福",
+      zones={ {cols=4, rows=4, label="玩法一 · 找福"}, {cols=4, rows=3, label="玩法二 · 找福"} },
+      skin="noir", unlock=64 },
+    { id="frost",  name="霜花",  yuan=50, price=10000, rtp=2.40, judge="number", lucky=3,
+      zones={ {cols=5, rows=4, label="玩法一 · 对号"},
+              {cols=4, rows=3, label="玩法二 · 对号"},
+              {cols=4, rows=2, label="玩法三 · 对号"} }, skin="ice", unlock=84 },
+}
+local TICKETS = TICKET_DEFS
+
+-- 单格倍数池（GDD 14.5），E[m] = 2.08
+local MULT_POOL = {
+    {1.0, 0.5500}, {1.5, 0.2200}, {2.0, 0.1200}, {3.0, 0.0600}, {5.0, 0.0300},
+    {10, 0.0130}, {30, 0.0050}, {100, 0.0015}, {300, 0.0004}, {800, 0.0001},
+}
+
+-- 命中格数 K 的分布（下标 1 = K=0），按面额档位；均值决定 RTP
+local K_DIST = {
+    [5]  = {0.490, 0.320, 0.145, 0.045},
+    [10] = {0.430, 0.380, 0.140, 0.040, 0.010},
+    [20] = {0.390, 0.400, 0.150, 0.050, 0.010},
+    [30] = {0.330, 0.420, 0.170, 0.060, 0.020},
+    [50] = {0.280, 0.430, 0.190, 0.070, 0.030},
+}
+
+-- 票面皮肤（对齐美术圣经 v2.1；纯代码可画）
+local SKIN = {
+    zodiac   = { paper={246,238,220,255}, frame={176,64,52,255},  ink={42,32,24,255},  accent={198,52,44,255} },
+    green    = { paper={240,236,216,255}, frame={38,92,72,255},   ink={30,44,36,255},  accent={158,64,48,255} },
+    ink      = { paper={238,234,220,255}, frame={70,74,66,255},   ink={34,36,32,255},  accent={120,110,80,255} },
+    red      = { paper={248,232,216,255}, frame={172,44,40,255},  ink={46,26,20,255},  accent={198,146,52,255} },
+    amber    = { paper={244,232,204,255}, frame={150,104,32,255}, ink={44,34,18,255},  accent={196,140,44,255} },
+    crimson  = { paper={246,226,206,255}, frame={150,32,32,255},  ink={44,22,18,255},  accent={196,156,58,255} },
+    wedding  = { paper={250,228,224,255}, frame={190,58,86,255},  ink={52,24,32,255},  accent={214,140,72,255} },
+    dunhuang = { paper={240,224,196,255}, frame={158,90,44,255},  ink={48,34,22,255},  accent={64,104,132,255} },
+    noir     = { paper={224,222,220,255}, frame={40,38,44,255},   ink={28,26,32,255},  accent={170,140,60,255} },
+    ice      = { paper={238,244,250,255}, frame={52,104,142,255}, ink={28,40,52,255},  accent={110,168,204,255} },
 }
 
 -- HOT 全收票（GDD 第 4 章）：面额 200，8% 全收 16 格
@@ -35,17 +84,41 @@ local HOT = {
     hotChance = 0.08, dollarCells = 3, dollarChance = 0.06, normalChance = 0.03,
 }
 
--- 转盘（data/wheel.csv）
+-- 转盘：金额按 SCALE（当前主力档票价）动态折算，避免后期变成零钱
 local WHEEL = {
-    { name="金币小", short="+1,000", type="coin", value=1000, prob=0.3000, color={184,115,51,255} },
-    { name="免费票", short="+5票", type="ticket", value=5, prob=0.1500, color={76,175,80,255} },
-    { name="金币中", short="+5,000", type="coin", value=5000, prob=0.1500, color={192,192,192,255} },
+    { name="金币小", short="", type="coin",     mult=1,  prob=0.3000, color={184,115,51,255} },
+    { name="免费票", short="+5 票", type="ticket", value=5, prob=0.1500, color={76,175,80,255} },
+    { name="金币中", short="", type="coin",     mult=3,  prob=0.1500, color={192,192,192,255} },
     { name="再来一次", short="再转", type="respin", value=0, prob=0.1500, color={156,39,176,255} },
-    { name="钻石", short="+10钻", type="diamond", value=10, prob=0.1000, color={33,150,243,255} },
-    { name="金币大", short="+2万", type="coin", value=20000, prob=0.0500, color={255,215,0,255} },
-    { name="员工碎片", short="+1碎片", type="fragment", value=1, prob=0.0800, color={255,152,0,255} },
-    { name="大奖", short="+20万", type="jackpot", value=200000, prob=0.0200, color={244,67,54,255} },
+    { name="钻石",   short="+10 钻", type="diamond", value=10, prob=0.1000, color={33,150,243,255} },
+    { name="金币大", short="", type="coin",     mult=10, prob=0.0500, color={255,215,0,255} },
+    { name="员工碎片", short="+1 碎片", type="fragment", value=1, prob=0.0800, color={255,152,0,255} },
+    { name="大奖",   short="", type="jackpot",  mult=60, prob=0.0200, color={244,67,54,255} },
 }
+
+--- 当前缩放基准：已解锁票中的最高票价
+local function SCALE()
+    local best = 1000
+    for _, tk in ipairs(TICKET_DEFS) do
+        if (state_.totalScratched or 0) >= (tk.unlock or 0) and tk.price > best then best = tk.price end
+    end
+    return best
+end
+
+--- 扇区实际数值（转盘结算与绘制共用）
+local function wheelValue(w)
+    if w.mult then return math.floor(w.mult * SCALE()) end
+    return w.value or 0
+end
+
+--- 扇区显示文案
+local function wheelLabel(w)
+    if w.mult then
+        return "+" .. fmtShort(wheelValue(w))
+    end
+    return w.short
+end
+
 local WHEEL_SPIN_SEC = 3.2
 local WHEEL_EXTRA_TURNS = 5
 local WHEEL_JITTER_DEG = 0.8
@@ -64,10 +137,10 @@ local RARITY_COLOR = { UR={255,215,0,255}, SSR={192,160,255,255}, SR={120,190,25
 
 -- 员工图鉴（GDD 6.5：UR 1 / SSR 3 / SR 6 / R 12 = 22）
 local STAFF_BASE = {
-    R   = { prod=2,   upBase=500 },
-    SR  = { prod=15,  upBase=4000 },
-    SSR = { prod=120, upBase=30000 },
-    UR  = { prod=800, upBase=200000 },
+    R   = { prod=10,   upBase=2000 },
+    SR  = { prod=75,   upBase=16000 },
+    SSR = { prod=600,  upBase=120000 },
+    UR  = { prod=4000, upBase=800000 },
 }
 local STAFF_CATALOG = {
     { id="ur_daju",  name="大橘",   rarity="UR",  desc="招财猫 · 全局产出+50%" },
@@ -102,9 +175,9 @@ local ECO = {
     energyRecoverSec = 300, energyCap = 30,
     offlineCapHours = 8,
     upgradeRatio = 1.55,
-    brushRadius = 30, revealThreshold = 0.78,
+    brushRadius = 30, revealThreshold = 1.0,
     gridCols = 18, gridRows = 18,
-    bankruptcyTickets = 20, bankruptcyCoins = 500, bankruptcyDailyCap = 3,
+    bankruptcyTickets = 20, bankruptcyCoins = 20000, bankruptcyDailyCap = 3,
 }
 
 -- ============================================================================
@@ -164,96 +237,115 @@ local function weightedSym(exclude)
     return SYMBOLS[idxs[#idxs]]
 end
 
---- 福彩票生成（ticket = TICKETS 元素）
-local function generateTicket(ticket)
-    local r, tier, acc = rng(), nil, 0
-    for _, t in ipairs(ticket.tiers) do
-        acc = acc + t.p
-        if r < acc then tier = t; break end
+local function pickMult()
+    local r, acc = rng(), 0
+    for _, t in ipairs(MULT_POOL) do
+        acc = acc + t[2]
+        if r < acc then return t[1] end
     end
-    if not tier then tier = ticket.tiers[#ticket.tiers] end
-
-    local winning = SYMBOLS[math.floor(rng() * 4) + 1]
-    local matchCount = tier.m
-    if matchCount == 0 then matchCount = math.floor(rng() * 3) end
-
-    local cells, placed = {}, 0
-    for i = 1, 9 do
-        if placed < matchCount and rng() < (matchCount - placed) / (10 - i) then
-            cells[i] = winning; placed = placed + 1
-        else
-            cells[i] = weightedSym(winning)
-        end
-    end
-    while placed < matchCount do
-        local i = math.floor(rng() * 9) + 1
-        if cells[i] ~= winning then cells[i] = winning; placed = placed + 1 end
-    end
-    while placed > matchCount do
-        local i = math.floor(rng() * 9) + 1
-        if cells[i] == winning then cells[i] = weightedSym(winning); placed = placed - 1 end
-    end
-    return { kind="lottery", ticket=ticket, cells=cells, winning=winning, payout=tier.v, matchCount=matchCount }
+    return 1.0
 end
 
---- HOT 票生成（16 格 + HOT 位；先决定 HOT，再定 $$ 格）
-local function generateHot()
-    local isHot = rng() < HOT.hotChance
+local function pickK(tk)
+    local dist = K_DIST[tk.yuan] or K_DIST[10]
+    local r, acc = rng(), 0
+    for i, p in ipairs(dist) do
+        acc = acc + p
+        if r < acc then return i - 1 end
+    end
+    return 0
+end
+
+--- 大数简写：万 / 亿（GDD 14.7）
+function fmtShort(n)
+    n = math.floor(n)
+    if n >= 100000000 then
+        local v = n / 100000000
+        if v >= 10 then return string.format("%.0f亿", v) end
+        return string.format("%.1f亿", v)
+    elseif n >= 10000 then
+        local v = n / 10000
+        if v >= 100 then return string.format("%.0f万", v) end
+        return string.format("%.1f万", v)
+    end
+    return tostring(n)
+end
+
+--- 多局票生成：先抽命中格数 K → 再抽每个命中格的倍数 m → 最后倒填符号 / 号码
+--- EV = E[K] × E[m] × price ≡ RTP × price
+local function generateTicket(tk)
+    local total = 0
+    for _, z in ipairs(tk.zones) do total = total + z.cols * z.rows end
+
+    local k = pickK(tk)
+    -- 首张票：固定 2 格命中（GDD 14.6 首日脚本），保证第一张必中
+    if state_ and (state_.totalScratched or 0) == 0 then k = 2 end
+    if k > total then k = total end
+    if k > 5 then k = 5 end
+
+    local hitSet = {}
+    local placed, guard = 0, 0
+    while placed < k and guard < 500 do
+        guard = guard + 1
+        local i = math.floor(rng() * total) + 1
+        if not hitSet[i] then hitSet[i] = true; placed = placed + 1 end
+    end
+
+    -- 幸运号（number 判定）
+    local lucky = {}
+    if tk.judge == "number" then
+        for i = 1, (tk.lucky or 1) do
+            local v, ok
+            repeat
+                ok = true
+                v = math.floor(rng() * 39) + 2
+                for _, x in ipairs(lucky) do if x == v then ok = false end end
+            until ok
+            lucky[i] = v
+        end
+    end
+    local target = tk.target or "福"
+
     local cells = {}
-    for i = 1, 16 do cells[i] = HOT.amounts[i] end
-    -- 打乱金额（Fisher-Yates）
-    for i = 16, 2, -1 do
-        local j = math.floor(rng() * i) + 1
-        cells[i], cells[j] = cells[j], cells[i]
-    end
-    -- $$ 格：随机 3 个
-    local dollar = {}
-    local placed = 0
-    while placed < HOT.dollarCells do
-        local i = math.floor(rng() * 16) + 1
-        if not dollar[i] then dollar[i] = true; placed = placed + 1 end
-    end
-    return { kind="hot", cells=cells, dollar=dollar, isHot=isHot }
-end
-
---- 好运十倍（体彩经典玩法）：1 个中奖号码 + 10 个我的号码，号码相同即中其下方奖金；×10 翻十倍
-local M10_PRIZES = { 2, 5, 10, 20, 50, 100 }
-local function generateM10()
-    local winning = math.floor(rng() * 40) + 1
-    local r = rng()
-    local hitCount = 0
-    if r < 0.55 then hitCount = 0
-    elseif r < 0.85 then hitCount = 1
-    elseif r < 0.97 then hitCount = 2
-    else hitCount = 3 end
-
-    local hits = {}
-    for i = 1, hitCount do hits[i] = true end
-    for i = 10, 2, -1 do
-        local j = math.floor(rng() * i) + 1
-        hits[i], hits[j] = hits[j], hits[i]
-    end
-
-    local entries = {}
-    local payout, matchCount, hasTen = 0, 0, false
-    for i = 1, 10 do
-        local num = math.floor(rng() * 40) + 1
-        if hits[i] then
-            num = winning
-        else
-            while num == winning do num = math.floor(rng() * 40) + 1 end
-        end
-        local prize = M10_PRIZES[math.floor(rng() * #M10_PRIZES) + 1]
-        local mult = 1
-        if hits[i] and rng() < 0.06 then mult = 10; hasTen = true end
-        entries[i] = { num = num, prize = prize, mult = mult, hit = hits[i] == true }
-        if num == winning then
-            payout = payout + prize * mult
-            matchCount = matchCount + 1
+    local idx = 1
+    for zi, z in ipairs(tk.zones) do
+        for c = 1, z.cols * z.rows do
+            local isHit = hitSet[idx] == true
+            local mult = isHit and pickMult() or (rng() < 0.62 and 1.0 or 1.5)
+            local amount = math.floor(tk.price * mult)
+            local val
+            if tk.judge == "number" then
+                if isHit then
+                    val = lucky[math.floor(rng() * #lucky) + 1]
+                else
+                    local bad = true
+                    while bad do
+                        val = math.floor(rng() * 39) + 2
+                        bad = false
+                        for _, x in ipairs(lucky) do if x == val then bad = true end end
+                    end
+                end
+            else
+                if isHit then
+                    val = target
+                else
+                    val = target
+                    while val == target do val = SYMBOLS[math.floor(rng() * #SYMBOLS) + 1] end
+                end
+            end
+            cells[idx] = { zone = zi, val = val, hit = isHit, mult = mult,
+                           amount = amount, revealed = false }
+            idx = idx + 1
         end
     end
-    return { kind = "m10", winning = winning, entries = entries, payout = payout,
-        matchCount = matchCount, hasTen = hasTen }
+
+    local payout, hitCount = 0, 0
+    for _, c in ipairs(cells) do
+        if c.hit then payout = payout + c.amount; hitCount = hitCount + 1 end
+    end
+
+    return { kind = "multi", ticket = tk, cells = cells, lucky = lucky, target = target,
+             payout = payout, hitCount = hitCount, total = total, zones = tk.zones }
 end
 
 --- 抽卡
@@ -318,7 +410,7 @@ end
 
 function defaultState()
     return {
-        coins=500, diamonds=160, tickets=20, energy=30, fragments=0,
+        coins=2000, diamonds=160, tickets=20, energy=30, fragments=0,
         ticketRemainMs=0, energyRemainMs=0,
         totalScratched=0, totalWon=0, spinsToday=0,
         bankruptcyDay=0, bankruptcyCount=0,
@@ -327,6 +419,7 @@ function defaultState()
         lastSeen=os.time(),
         ads={ day=0, total=0, byPlacement={}, lastTs=0 },
         seenTutorial=false,
+        ver=21,
     }
 end
 
@@ -373,6 +466,12 @@ function loadGame()
     if type(d.ads) ~= "table" or type(d.ads.byPlacement) ~= "table" then
         d.ads = { day=todayIndex(), total=0, byPlacement={}, lastTs=0 }
     end
+    -- v2.1 面额重定标：旧存档的金币量级是 1/200，补到能买第一张 5 元票
+    if (tonumber(d.ver) or 0) < 21 then
+        d.ver = 21
+        if d.coins < 5000 then d.coins = 5000 end
+        if d.tickets < 20 then d.tickets = 20 end
+    end
     state_ = d
     return true
 end
@@ -397,7 +496,7 @@ function checkBankruptcy()
         state_.bankruptcyDay = day
         state_.bankruptcyCount = 0
     end
-    if state_.coins >= 5 or state_.tickets > 0 or state_.energy > 0 then return nil end
+    if state_.coins >= 1000 or state_.tickets > 0 or state_.energy > 0 then return nil end
     if state_.bankruptcyCount >= ECO.bankruptcyDailyCap then return nil end
     state_.bankruptcyCount = state_.bankruptcyCount + 1
     state_.tickets = state_.tickets + ECO.bankruptcyTickets
@@ -518,16 +617,42 @@ local offlineBill_ = nil
 local bankBill_ = nil
 
 local scratch_ = {
-    mode = "lottery",          -- lottery | hot
+    mode = "multi",
     result = nil,
-    cols = 3,
-    removed = {}, removed2 = {},
-    removedCount = 0, total = ECO.gridCols * ECO.gridRows,
-    rect = { x=0, y=0, w=252, h=252 },
-    rect2 = nil,               -- HOT 附加位
-    foil = {},                 -- 每个格子的银色涂层 Widget
-    pointerDown = false, lastX = 0, lastY = 0, settled = false,
+    zones = {},            -- { rect={x,y,w,h}, cols, rows }
+    cellRects = {},        -- 全局格索引 → {x,y,w,h}
+    revealed = {},         -- 全局格索引 → true
+    revealedCount = 0,
+    total = 0,
+    foil = {},             -- 兼容占位
+    barW = 240,
+    pointerDown = false, lastX = 0, lastY = 0,
+    settled = false, settleDelay = 0, lastTouch = 0, hitFlash = 0,
 }
+
+-- 飘字（每格命中时的即时反馈）
+local floats_ = {}
+local function addFloat(x, y, text, color)
+    table.insert(floats_, { x = x, y = y, text = text, life = 1.0, color = color or { 255, 226, 140 } })
+end
+local function updateFloats(dt)
+    for i = #floats_, 1, -1 do
+        local f = floats_[i]
+        f.life = f.life - dt * 1.15
+        f.y = f.y - dt * 34
+        if f.life <= 0 then table.remove(floats_, i) end
+    end
+end
+local function drawFloats(nvg)
+    for _, f in ipairs(floats_) do
+        local al = math.floor(250 * math.min(1, f.life))
+        nvgFontFace(nvg, "sans")
+        nvgFontSize(nvg, 17)
+        nvgTextAlign(nvg, 18)
+        nvgFillColor(nvg, nvgRGBA(f.color[1], f.color[2], f.color[3], al))
+        nvgText(nvg, f.x, f.y, f.text)
+    end
+end
 
 local wheelAnim_ = { spinning=false, angle=0, startAngle=0, targetAngle=0, elapsed=0, result=nil }
 
@@ -696,7 +821,17 @@ function StartInner()
     UI.SetInspectorRenderHook(function(nvg)
         if not nvg then return end
         pcall(function()
+            if state_.screen == "scratch" then
+                if not scratch_.settled then DrawFoil(nvg) end
+                if (scratch_.hitFlash or 0) > 0.01 then
+                    nvgBeginPath(nvg)
+                    nvgRect(nvg, 0, 0, UI.GetWidth(), UI.GetHeight())
+                    nvgFillColor(nvg, nvgRGBA(255, 236, 170, math.floor(46 * scratch_.hitFlash)))
+                    nvgFill(nvg)
+                end
+            end
             drawParticles(nvg)
+            drawFloats(nvg)
             if state_.screen == "wheel" then DrawWheel(nvg) end
         end)
     end)
@@ -712,7 +847,7 @@ function StartInner()
     if bankBill_ and not offlineBill_ then
         ShowToast("破产补助：票 +" .. bankBill_.tickets .. " · 金币 +" .. bankBill_.coins)
     end
-    print("=== 好运游戏厅 v0.4 启动 ===")
+    print("=== 好运游戏厅 v0.9 启动 ===")
 end
 
 function Stop()
@@ -822,6 +957,26 @@ function HandleUpdate(eventType, eventData)
     -- 粒子推进
     updateParticles(dtMs / 1000)
 
+    -- 飘字 / 命中闪光衰减
+    updateFloats(dtMs / 1000)
+    if (scratch_.hitFlash or 0) > 0 then
+        scratch_.hitFlash = math.max(0, scratch_.hitFlash - dtMs / 1000 * 2.2)
+    end
+
+    -- 刮卡：刮满后延迟开奖；剩余 <5% 且停手 2 秒 → 扫尾补齐
+    if state_.screen == "scratch" then
+        if scratch_.settleDelay and scratch_.settleDelay > 0 then
+            scratch_.settleDelay = scratch_.settleDelay - dtMs / 1000
+            if scratch_.settleDelay <= 0 then SettleScratch() end
+        elseif not scratch_.settled and scratch_.total > 0 then
+            local ratio = scratch_.revealedCount / scratch_.total
+            if ratio >= 0.95 and not scratch_.pointerDown
+                and os.clock() - (scratch_.lastTouch or 0) > 2.0 then
+                RevealAll()
+            end
+        end
+    end
+
     -- 转盘动画推进（实际绘制交给全局渲染钩子，见 StartInner）
     if state_.screen == "wheel" and wheelAnim_.spinning then
         wheelAnim_.elapsed = wheelAnim_.elapsed + dtMs / 1000
@@ -841,57 +996,61 @@ local function toLogical(x)
 end
 
 local function updateScratchProgress()
-    local ratio = scratch_.removedCount / math.max(1, scratch_.total)
+    local ratio = scratch_.revealedCount / math.max(1, scratch_.total)
     local pct = math.floor(ratio * 100)
     if uiRoot_ then
-        local lbl = uiRoot_:FindById("scratchPct") --[[@as Label?]]
+        local lbl = uiRoot_:FindById("scratchPct")
         if lbl then
-            lbl:SetText(string.format("已刮 %d%% · 刮到 %d%% 自动揭晓", pct, math.floor(ECO.revealThreshold * 100)))
+            if pct >= 100 then
+                lbl:SetText("已刮 100% · 正在开奖")
+            else
+                lbl:SetText(string.format("刮开 %d%% · 全部刮开即开奖", pct))
+            end
         end
         local bar = uiRoot_:FindById("scratchBar")
-        if bar then
-            bar:SetWidth(math.floor((scratch_.barW or 240) * math.min(100, pct) / 100))
-        end
-    end
-end
-
-local function scratchRectAt(lx, ly, r, removed, total)
-    local cols = scratch_.cols or 3
-    local rows = scratch_.rows or cols
-    local cellW, cellH = r.w / cols, r.h / rows
-    local minC = math.max(0, math.floor((lx - ECO.brushRadius - r.x) / cellW))
-    local maxC = math.min(cols - 1, math.floor((lx + ECO.brushRadius - r.x) / cellW))
-    local minR = math.max(0, math.floor((ly - ECO.brushRadius - r.y) / cellH))
-    local maxR = math.min(rows - 1, math.floor((ly + ECO.brushRadius - r.y) / cellH))
-    local br2 = ECO.brushRadius * ECO.brushRadius
-    local changed = false
-    for row = minR, maxR do
-        for col = minC, maxC do
-            local key = row * cols + col
-            if not removed[key] then
-                local cx = r.x + (col + 0.5) * cellW
-                local cy = r.y + (row + 0.5) * cellH
-                local dx, dy = cx - lx, cy - ly
-                if dx * dx + dy * dy <= br2 then
-                    removed[key] = true
-                    scratch_.removedCount = scratch_.removedCount + 1
-                    local f = scratch_.foil and scratch_.foil[key + 1]
-                    if f then f:Hide() end
-                    changed = true
-                end
+        if bar then bar:SetWidth(math.max(1, math.floor((scratch_.barW or 260) * math.min(100, pct) / 100))) end
+        local hint = uiRoot_:FindById("scratchHint")
+        if hint then
+            if ratio >= 0.95 and pct < 100 then
+                hint:SetText("快刮完了 · 松手 2 秒自动补齐")
+            else
+                hint:SetText("手指划过即可刮开 · 每格都是一次判定")
             end
         end
     end
-    return changed
 end
 
+--- 刮开落在 (lx,ly) 下的格子；单格揭晓即一次判定
 local function scratchAt(lx, ly)
-    local changed = scratchRectAt(lx, ly, scratch_.rect, scratch_.removed, scratch_.total)
-    if changed then
-        updateScratchProgress()
-        local ratio = scratch_.removedCount / math.max(1, scratch_.total)
-        if ratio >= ECO.revealThreshold then RevealAll() end
+    local changed = false
+    for i = 1, scratch_.total do
+        if not scratch_.revealed[i] then
+            local r = scratch_.cellRects[i]
+            if lx >= r.x - 2 and lx <= r.x + r.w + 2 and ly >= r.y - 2 and ly <= r.y + r.h + 2 then
+                scratch_.revealed[i] = true
+                scratch_.revealedCount = scratch_.revealedCount + 1
+                local c = scratch_.result.cells[i]
+                local cx, cy = r.x + r.w / 2, r.y + r.h / 2
+                if c.hit then
+                    local big = c.mult >= 10
+                    spawnParticles(cx, cy, big and 110 or 24, big)
+                    if big then flashAlpha_ = math.max(flashAlpha_ or 0, 0.75) end
+                    addFloat(cx, cy - r.h * 0.2, "+" .. fmtShort(c.amount),
+                        big and { 255, 226, 120 } or { 255, 210, 130 })
+                    scratch_.hitFlash = math.min(1.0, (scratch_.hitFlash or 0) + (big and 0.6 or 0.22))
+                else
+                    addFloat(cx, cy - r.h * 0.2, "没中", { 150, 140, 124 })
+                end
+                changed = true
+            end
+        end
     end
+    if changed then
+        scratch_.lastTouch = os.clock()
+        updateScratchProgress()
+        if scratch_.revealedCount >= scratch_.total then RevealAll() end
+    end
+    return changed
 end
 
 function HandleTouchBegin(eventType, eventData)
@@ -925,44 +1084,26 @@ end
 -- 8. 蒙版 / 转盘渲染
 -- ============================================================================
 
-local function drawFoilRect(nvg, r, removed)
-    local cellW, cellH = r.w / ECO.gridCols, r.h / ECO.gridRows
-    nvgBeginPath(nvg)
-    nvgRoundedRect(nvg, r.x - 4, r.y - 4, r.w + 8, r.h + 8, 12)
-    nvgFillColor(nvg, nvgRGBA(172, 178, 189, 255))
-    nvgFill(nvg)
-    for row = 0, ECO.gridRows - 1 do
-        for col = 0, ECO.gridCols - 1 do
-            if not removed[row * ECO.gridCols + col] then
-                nvgBeginPath(nvg)
-                nvgRect(nvg, r.x + col * cellW, r.y + row * cellH, cellW + 0.5, cellH + 0.5)
-                if (row + col) % 2 == 0 then
-                    nvgFillColor(nvg, nvgRGBA(188, 194, 205, 255))
-                else
-                    nvgFillColor(nvg, nvgRGBA(176, 182, 194, 255))
-                end
-                nvgFill(nvg)
-            end
-        end
-    end
-end
-
 function DrawFoil(nvg)
-    drawFoilRect(nvg, scratch_.rect, scratch_.removed)
-    if scratch_.rect2 then
-        drawFoilRect(nvg, scratch_.rect2, scratch_.removed2)
-    end
-    local ratio = scratch_.removedCount / scratch_.total
-    if ratio > 0.02 then
-        local r = scratch_.rect
-        nvgBeginPath(nvg)
-        nvgRoundedRect(nvg, r.x + r.w - 78, r.y + r.h + 10, 78, 20, 6)
-        nvgFillColor(nvg, nvgRGBA(0, 0, 0, 120))
-        nvgFill(nvg)
-        nvgFillColor(nvg, nvgRGBA(255, 255, 255, 220))
-        nvgFontSize(nvg, 13)
-        nvgTextAlign(nvg, 129)
-        nvgText(nvg, r.x + r.w - 39, r.y + r.h + 21, string.format("已刮 %d%%", math.floor(ratio * 100)))
+    for i = 1, scratch_.total do
+        if not scratch_.revealed[i] then
+            local r = scratch_.cellRects[i]
+            -- 银灰底
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, r.x, r.y, r.w, r.h, 3)
+            nvgFillColor(nvg, nvgRGBA(176, 182, 194, 255))
+            nvgFill(nvg)
+            -- 上半道高光，模拟拉丝反光
+            nvgBeginPath(nvg)
+            nvgRoundedRect(nvg, r.x + 1, r.y + 1, r.w - 2, r.h * 0.42, 2)
+            nvgFillColor(nvg, nvgRGBA(206, 212, 224, 105))
+            nvgFill(nvg)
+            -- 右下暗边
+            nvgBeginPath(nvg)
+            nvgRect(nvg, r.x + 1, r.y + r.h - 2, r.w - 2, 1)
+            nvgFillColor(nvg, nvgRGBA(140, 146, 158, 110))
+            nvgFill(nvg)
+        end
     end
 end
 
@@ -1005,10 +1146,10 @@ function DrawWheel(nvg)
         local tx = cx + math.cos(mid) * R * 0.66
         local ty = cy + math.sin(mid) * R * 0.66
         nvgFontFace(nvg, "sans")
-        nvgFontSize(nvg, 13)
+        nvgFontSize(nvg, 11)
         nvgFillColor(nvg, nvgRGBA(255, 255, 255, 245))
         nvgTextAlign(nvg, 18)
-        nvgText(nvg, tx, ty, s.short)
+        nvgText(nvg, tx, ty, wheelLabel(s))
     end
 
     -- 中奖扇区高亮
@@ -1092,6 +1233,35 @@ function updateHud()
     if a1 and state_.ads then
         a1:SetText("没票了？看广告 +20 票（今日 " .. (state_.ads.byPlacement.A1 or 0) .. "/8）")
     end
+
+    -- 档位进度：下一个未解锁的票
+    local nextTk, unlockedN = nil, 0
+    for _, tk in ipairs(TICKET_DEFS) do
+        if (state_.totalScratched or 0) >= (tk.unlock or 0) then
+            unlockedN = unlockedN + 1
+        elseif not nextTk then
+            nextTk = tk
+        end
+    end
+    local hint = uiRoot_:FindById("counterHint")
+    if hint then
+        hint:SetText("已解锁 " .. unlockedN .. "/" .. #TICKET_DEFS .. " 款 · 一张票 8-40 次机会")
+    end
+    local tl = uiRoot_:FindById("tierLabel")
+    if tl then tl:SetText(unlockedN .. "/" .. #TICKET_DEFS .. " 款") end
+    local th = uiRoot_:FindById("tierHint")
+    if th then
+        if nextTk then
+            th:SetText("再刮 " .. math.max(0, (nextTk.unlock or 0) - (state_.totalScratched or 0))
+                .. " 张解锁「" .. nextTk.name .. "」· " .. nextTk.yuan .. " 元")
+        else
+            th:SetText("全部档位已解锁 · 追求更高的单张奖金")
+        end
+    end
+    local tb = uiRoot_:FindById("tierBar")
+    if tb then
+        tb:SetWidth(math.max(6, math.floor(248 * unlockedN / #TICKET_DEFS)))
+    end
 end
 
 --- 刮卡柜台（选票）
@@ -1101,41 +1271,45 @@ function BuildLobby()
     local topPad = math.floor(UI.GetHeight() * 0.105)
 
     local ticketBtns = {}
-    for _, tk in ipairs(TICKETS) do
-        local unlocked, lockHint = true, nil
-        if state_.totalScratched < (tk.unlock or 0) then
-            unlocked = false; lockHint = "刮满 " .. tk.unlock .. " 张"
-        elseif tk.unlockAds and (state_.adsWatchedTotal or 0) < tk.unlockAds then
-            unlocked = false; lockHint = "看广告 " .. tk.unlockAds .. " 次"
-        elseif tk.unlockStreak and (state_.loginStreak or 0) < tk.unlockStreak then
-            unlocked = false; lockHint = "登录 " .. tk.unlockStreak .. " 天"
+    local unlockedList, nextTk = {}, nil
+    for _, tk in ipairs(TICKET_DEFS) do
+        if (state_.totalScratched or 0) >= (tk.unlock or 0) then
+            table.insert(unlockedList, tk)
+        elseif not nextTk then
+            nextTk = tk
         end
-        table.insert(ticketBtns, UI.Button {
-            text = unlocked and (tk.name .. "   " .. tk.price .. "币") or ("未解锁 · " .. lockHint),
-            width = "48%", height = 52, fontSize = 13,
-            backgroundColor = unlocked and { 54, 41, 26, 255 } or { 30, 25, 20, 255 },
-            textColor = unlocked and { 240, 220, 160, 255 } or { 122, 110, 90, 255 },
-            borderRadius = 10, borderWidth = 1,
-            borderColor = unlocked and { 138, 110, 54, 255 } or { 58, 48, 36, 255 },
-            disabled = not unlocked,
-            onClick = function() StartScratch(tk) end,
-        })
     end
 
-    -- 好运十倍（体彩经典玩法）
-    local m10Unlocked = true  -- 好运十倍直接开放，作为第二种核心玩法
-    table.insert(ticketBtns, UI.Button {
-        text = "好运十倍   10币",
-        width = "48%", height = 52, fontSize = 13,
-        backgroundColor = m10Unlocked and { 62, 30, 26, 255 } or { 30, 25, 20, 255 },
-        textColor = m10Unlocked and { 255, 176, 140, 255 } or { 122, 110, 90, 255 },
-        borderRadius = 10, borderWidth = 1,
-        borderColor = m10Unlocked and { 168, 70, 54, 255 } or { 58, 48, 36, 255 },
-        disabled = not m10Unlocked,
-        onClick = function() StartM10() end,
-    })
-
-    local hotUnlocked = state_.totalScratched >= 30
+    -- 最多展示 6 款（价格最高的），低档位折叠成一行说明
+    local showFrom = 1
+    local folded = 0
+    if #unlockedList > 6 then
+        showFrom = #unlockedList - 5
+        folded = showFrom - 1
+    end
+    for i = showFrom, #unlockedList do
+        local tk = unlockedList[i]
+        table.insert(ticketBtns, UI.Button {
+            text = tk.name .. "  " .. tk.yuan .. "元",
+            width = "48%", height = 42, fontSize = 13,
+            backgroundColor = { 250, 244, 228, 255 },
+            textColor = { 60, 40, 26, 255 },
+            borderRadius = 6, borderWidth = 1,
+            borderColor = { 170, 130, 60, 255 },
+            onClick = function() StartTicket(tk) end,
+        })
+    end
+    if nextTk then
+        table.insert(ticketBtns, UI.Button {
+            text = "🔒 " .. nextTk.name .. " · 刮 " .. nextTk.unlock .. " 张",
+            width = "48%", height = 42, fontSize = 12,
+            backgroundColor = { 32, 27, 21, 255 },
+            textColor = { 110, 100, 86, 255 },
+            borderRadius = 6, borderWidth = 1,
+            borderColor = { 56, 48, 38, 255 },
+            disabled = true,
+        })
+    end
 
     uiRoot_ = UI.Panel {
         width = "100%", height = "100%", backgroundColor = C.bg,
@@ -1171,11 +1345,13 @@ function BuildLobby()
                                 justifyContent = "space-between", alignItems = "center",
                                 children = {
                                     UI.Label { text = "彩票柜台", fontSize = 14, fontColor = C.text },
-                                    UI.Label { text = "3 个相同符号即中奖", fontSize = 10, fontColor = C.dim },
+                                    UI.Label { id = "counterHint", text = "", fontSize = 10, fontColor = C.dim },
                                 } },
+                            folded > 0 and UI.Label { text = "另有 " .. folded .. " 款低档票已解锁（继续往上刮更容易出货）",
+                                fontSize = 9, fontColor = { 140, 124, 96, 210 } } or UI.Panel { height = 0 },
                             UI.Panel { width = "100%", flexDirection = "row", flexWrap = "wrap",
                                 justifyContent = "space-between", gap = 8, children = ticketBtns },
-                            UI.Label { text = "有免费票先用免费票 · 没票时按面额用金币购买",
+                            UI.Label { text = "1 元 = 200 金币 · 有免费票不扣金币 · 每张 8-40 次机会",
                                 fontSize = 10, fontColor = C.dim },
                             UI.Button { id = "a1Btn", text = "没票了？看广告 +20 票（今日 0/8）",
                                 width = "100%", height = 38, fontSize = 12,
@@ -1183,21 +1359,23 @@ function BuildLobby()
                                 borderRadius = 9, onClick = function() ShowAd("A1", updateHud) end },
                         },
                     },
-                    -- HOT 全收
-                    UI.Panel { width = "100%", padding = 14,
-                        flexDirection = "row", justifyContent = "space-between", alignItems = "center",
-                        backgroundColor = { 52, 26, 20, 255 }, borderRadius = 14,
-                        borderWidth = 1, borderColor = { 150, 56, 44, 255 },
+                    -- 档位进度
+                    UI.Panel { width = "100%", padding = 12, gap = 5,
+                        backgroundColor = { 34, 28, 20, 255 }, borderRadius = 12,
+                        borderWidth = 1, borderColor = { 92, 72, 40, 255 },
                         children = {
-                            UI.Panel { gap = 4, children = {
-                                UI.Label { text = "HOT 全收 · 200 币", fontSize = 15, fontColor = { 255, 152, 134, 255 } },
-                                UI.Label { text = hotUnlocked and "刮出 HOT，16 格奖金全收" or "累计刮满 30 张解锁", fontSize = 11, fontColor = { 214, 178, 168, 225 } },
-                            }},
-                            UI.Button { text = hotUnlocked and "开刮" or "未解锁",
-                                width = 84, height = 40, fontSize = 13,
-                                backgroundColor = hotUnlocked and { 190, 62, 50, 255 } or { 58, 44, 38, 255 },
-                                textColor = { 255, 240, 230, 255 }, borderRadius = 9,
-                                disabled = not hotUnlocked, onClick = function() StartHot() end },
+                            UI.Panel { width = "100%", flexDirection = "row",
+                                justifyContent = "space-between", alignItems = "center",
+                                children = {
+                                    UI.Label { text = "档位进度", fontSize = 12, fontColor = C.text },
+                                    UI.Label { id = "tierLabel", text = "", fontSize = 10, fontColor = C.dim },
+                                } },
+                            UI.Panel { width = "100%", height = 5, backgroundColor = { 24, 20, 14, 255 },
+                                borderRadius = 3,
+                                children = { UI.Panel { id = "tierBar", width = "6%", height = 5,
+                                    backgroundColor = C.gold, borderRadius = 3 } } },
+                            UI.Label { id = "tierHint", text = "", fontSize = 10,
+                                fontColor = { 150, 132, 100, 230 } },
                         },
                     },
                     -- 幸运转盘
@@ -1256,11 +1434,11 @@ function ShowTutorial()
                 borderWidth = 2, borderColor = C.gold,
                 children = {
                     UI.Label { text = "怎么玩", fontSize = 22, fontColor = C.goldL, textAlign = "center" },
-                    UI.Label { text = "1. 大厅选彩票：有免费票直接刮，没票用金币买", fontSize = 13, fontColor = C.text },
-                    UI.Label { text = "2. 刮开涂层，刮到 78% 自动开奖", fontSize = 13, fontColor = C.text },
-                    UI.Label { text = "3. 福彩：3 个相同符号中奖；好运十倍：号码相同", fontSize = 13, fontColor = C.text },
-                    UI.Label { text = "4. 好运十倍刮出 ×10，该注奖金翻十倍", fontSize = 13, fontColor = C.text },
-                    UI.Label { text = "5. 转盘赚票/电/钻石，手机里抽员工挂机产出", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "1. 大厅选票：一张票印着面额，8-40 次中奖机会", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "2. 手指刮开银色涂层，每刮开一格就是一次判定", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "3. 对号票：刮出的号码和顶部幸运号一样就中", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "4. 找符号票：刮出目标符号就中，下面就是奖金", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "5. 全部刮开自动开奖；转盘与手机里的员工另有收益", fontSize = 13, fontColor = C.text },
                     goldBtn("知道了，开始刮卡", function()
                         state_.seenTutorial = true
                         saveGame()
@@ -1276,25 +1454,8 @@ end
 
 
 -- ============================================================================
--- 10. 刮卡（福彩 + HOT 通用）
+-- 10. 刮卡（多局票 · v2.1）
 -- ============================================================================
-
-local function layoutFoil(areaW, areaH)
-    local logicalW, logicalH = UI.GetWidth(), UI.GetHeight()
-    local gx = math.floor((logicalW - areaW) / 2)
-    local gy = math.floor(logicalH * 0.28)
-    scratch_.rect = { x = gx, y = gy, w = areaW, h = areaH }
-    if scratch_.mode == "hot" then
-        scratch_.rect2 = { x = gx + areaW / 2 - 40, y = gy + areaH + 16, w = 80, h = 80 }
-        scratch_.total = ECO.gridCols * ECO.gridRows + ECO.gridCols * ECO.gridRows
-    else
-        scratch_.rect2 = nil
-        scratch_.total = ECO.gridCols * ECO.gridRows
-    end
-    scratch_.removed = {}
-    scratch_.removed2 = {}
-    scratch_.removedCount = 0
-end
 
 --- 进场：有免费票优先免费用，没有则用金币购买
 local function enterTicket(price, name)
@@ -1305,434 +1466,306 @@ local function enterTicket(price, name)
     if state_.coins >= price then
         state_.coins = state_.coins - price
         saveGame()
-        ShowToast("已用 " .. price .. " 金币购买「" .. name .. "」")
+        ShowToast("已花 " .. fmt(price) .. " 金币买票")
         return true
     end
-    ShowToast("免费票不足，金币也不够（" .. name .. " 需 " .. price .. " 金币）")
+    ShowToast("票和金币都不够 · 先转个盘或看广告")
     return false
 end
 
-function StartScratch(tk)
+function StartTicket(tk)
     if not enterTicket(tk.price, tk.name) then return end
-    scratch_.mode = "lottery"
-    scratch_.result = generateTicket(tk)
-    scratch_.settled = false
-    buildScratchScreen()
+    scratch_ = {
+        mode = "multi", result = generateTicket(tk),
+        zones = {}, cellRects = {}, revealed = {}, revealedCount = 0,
+        total = 0, foil = {}, barW = 240,
+        pointerDown = false, lastX = 0, lastY = 0,
+        settled = false, settleDelay = 0, lastTouch = 0, hitFlash = 0,
+    }
+    floats_ = {}
+    buildMultiScreen()
 end
 
-function StartHot()
-    if not enterTicket(HOT.price, "HOT 全收") then return end
-    scratch_.mode = "hot"
-    scratch_.result = generateHot()
-    scratch_.settled = false
-    buildScratchScreen()
-end
+-- 兼容旧入口
+function StartScratch(tk) StartTicket(tk) end
 
-function StartM10()
-    if not enterTicket(10, "好运十倍") then return end
-    scratch_.mode = "m10"
-    scratch_.result = generateM10()
-    scratch_.settled = false
-    buildScratchScreen()
-end
-
-function buildScratchScreen()
-    if scratch_.mode == "m10" then buildM10Screen(); return end
+--- 多局票界面：票面（纸色 + 边框 + 幸运号）→ 若干玩法区 → 逐格刮开
+function buildMultiScreen()
     state_.screen = "scratch"
     local cur = scratch_.result
+    local tk = cur.ticket
     local W, H = UI.GetWidth(), UI.GetHeight()
-    local isLottery = (scratch_.mode == "lottery")
-    local cols = isLottery and 3 or 4
     local topPad = math.floor(H * 0.105)
+    local skin = SKIN[tk.skin] or SKIN.green
 
-    local maxGridW = isLottery and math.min(W * 0.64, 288) or math.min(W * 0.76, 330)
-    local gap = 6
-    local cell = math.floor((maxGridW - gap * (cols - 1)) / cols)
-    local gridW = cell * cols + gap * (cols - 1)
-    local gridH = gridW
-    local cardW = gridW + 32
-    local cardH = gridH + 128
-    local cardX = math.floor((W - cardW) / 2)
-    local cardY = math.floor(H * 0.185)
-    local gx = cardX + 16
-    local gy = cardY + 104
+    local headerH = 44
+    local cardX = 10
+    local cardW = W - 20
+    local cardY = topPad + headerH + 2
+    local bottomH = 96
+    local cardH = H - cardY - bottomH
 
-    scratch_.cols = cols
-    scratch_.barW = gridW
-    scratch_.rect = { x = gx, y = gy, w = gridW, h = gridH }
-    scratch_.rect2 = nil
-    scratch_.total = cols * cols
-    scratch_.removed = {}
-    scratch_.removed2 = {}
-    scratch_.removedCount = 0
-    scratch_.foil = {}
+    local nZones = #cur.zones
+    local totalRows = 0
+    for _, z in ipairs(cur.zones) do totalRows = totalRows + z.rows end
 
-    local winColor = isLottery and (SYMBOL_COLOR[cur.winning] or C.goldL) or C.gold
+    local titleH, zoneGap, gap = 17, 7, 4
+    local padT, padB = 40, 10
 
-    local cellWidgets, foilWidgets = {}, {}
-    for i = 1, cols * cols do
-        local row = math.floor((i - 1) / cols)
-        local col = (i - 1) % cols
-        local x = gx + col * (cell + gap)
-        local y = gy + row * (cell + gap)
-        local text, color, isWin
-        if isLottery then
-            text = cur.cells[i]
-            isWin = (text == cur.winning)
-            color = SYMBOL_COLOR[text] or C.text
-        else
-            text = tostring(cur.cells[i])
-            isWin = cur.dollar[i] == true
-            color = isWin and C.gold or { 214, 202, 180, 255 }
+    local maxCols = 1
+    for _, z in ipairs(cur.zones) do if z.cols > maxCols then maxCols = z.cols end end
+
+    -- 解出格边长：同时满足高度与宽度约束
+    local fixedH = padT + padB + nZones * titleH + (nZones - 1) * zoneGap + (totalRows - nZones) * gap
+    local cellByH = math.floor((cardH - fixedH) / math.max(1, totalRows))
+    local cellByW = math.floor((cardW - 24) / maxCols)
+    local cell = math.max(28, math.min(cellByH, cellByW, 66))
+
+    scratch_.zones, scratch_.cellRects = {}, {}
+    local titlePos = {}
+    local y = cardY + padT
+    local gi = 1
+    for zi, z in ipairs(cur.zones) do
+        local zw = z.cols * cell + (z.cols - 1) * gap
+        local zh = z.rows * cell + (z.rows - 1) * gap
+        local zx = math.floor((W - zw) / 2)
+        titlePos[zi] = { x = zx, y = y }
+        local zy = y + titleH
+        scratch_.zones[zi] = { rect = { x = zx, y = zy, w = zw, h = zh }, cols = z.cols, rows = z.rows }
+        for r = 0, z.rows - 1 do
+            for c = 0, z.cols - 1 do
+                scratch_.cellRects[gi] = {
+                    x = zx + c * (cell + gap), y = zy + r * (cell + gap),
+                    w = cell, h = cell,
+                }
+                gi = gi + 1
+            end
         end
+        y = zy + zh + zoneGap
+    end
+    scratch_.total = cur.total
+    scratch_.revealed, scratch_.revealedCount = {}, 0
+    scratch_.barW = cardW - 40
 
-        table.insert(cellWidgets, UI.Panel {
-            position = "absolute", left = x, top = y, width = cell, height = cell,
-            backgroundColor = isWin and { 62, 46, 18, 255 } or { 30, 24, 16, 255 },
-            borderRadius = 8, borderWidth = 1,
-            borderColor = isWin and { 140, 110, 44, 255 } or { 74, 60, 36, 255 },
-            justifyContent = "center", alignItems = "center", pointerEvents = "none",
+    -- 格子控件（内容预先排好，被银色涂层盖住）
+    local widgets = {}
+    local isNum = (tk.judge == "number")
+    for i = 1, cur.total do
+        local rc = scratch_.cellRects[i]
+        local c = cur.cells[i]
+        local numSize = math.floor(cell * 0.42)
+        local amtSize = math.floor(cell * 0.21)
+        local valColor = isNum and { 42, 36, 28, 255 } or (SYMBOL_COLOR[c.val] or { 60, 50, 40, 255 })
+        table.insert(widgets, UI.Panel {
+            position = "absolute", left = rc.x, top = rc.y, width = rc.w, height = rc.h,
+            backgroundColor = { skin.paper[1] - 6, skin.paper[2] - 6, skin.paper[3] - 8, 255 },
+            borderRadius = 3, borderWidth = 1,
+            borderColor = { skin.frame[1], skin.frame[2], skin.frame[3], 70 },
+            justifyContent = "center", alignItems = "center", gap = 1,
+            pointerEvents = "none",
             children = {
-                UI.Label {
-                    text = text,
-                    fontSize = isLottery and math.floor(cell * 0.46) or math.floor(cell * 0.28),
-                    fontColor = color,
-                },
+                UI.Label { text = tostring(c.val), fontSize = numSize, fontColor = valColor },
+                UI.Label { text = fmtShort(c.amount), fontSize = amtSize,
+                    fontColor = c.hit and { 178, 46, 34, 255 } or { 128, 112, 88, 255 } },
             },
         })
-        table.insert(foilWidgets, UI.Panel {
-            position = "absolute", left = x, top = y, width = cell, height = cell,
-            backgroundColor = (row + col) % 2 == 0 and C.silver or C.silver2,
-            borderRadius = 8, justifyContent = "center", alignItems = "center",
-            pointerEvents = "none",
-            children = { UI.Label { text = "刮", fontSize = math.floor(cell * 0.2), fontColor = { 118, 124, 136, 255 } } },
-        })
-        scratch_.foil[i] = foilWidgets[#foilWidgets]
     end
 
-    local rewardRow
-    if isLottery then
-        local parts = {}
-        for _, t in ipairs(cur.ticket.tiers) do
-            if t.m > 0 then table.insert(parts, t.m .. "个 = " .. fmt(t.v) .. "币") end
-        end
-        rewardRow = table.concat(parts, "   ")
-    else
-        rewardRow = "HOT = 16 格全收   ·   $$ 格 = 单独奖金"
+    -- 区标题
+    local titles = {}
+    for zi, z in ipairs(cur.zones) do
+        local tp = titlePos[zi]
+        table.insert(titles, UI.Panel {
+            position = "absolute", left = tp.x, top = tp.y,
+            width = scratch_.zones[zi].rect.w, height = titleH,
+            pointerEvents = "none",
+            children = {
+                UI.Label { text = z.label, fontSize = 11, fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 210 } },
+            },
+        })
     end
+
+    -- 幸运号 / 目标符号
+    local headKids = {}
+    if isNum then
+        table.insert(headKids, UI.Label { text = "幸运号", fontSize = 10,
+            fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 180 } })
+        local row = {}
+        for _, v in ipairs(cur.lucky) do
+            table.insert(row, UI.Panel {
+                width = 38, height = 30, borderRadius = 4,
+                backgroundColor = { 255, 250, 238, 255 },
+                borderWidth = 1, borderColor = { skin.frame[1], skin.frame[2], skin.frame[3], 140 },
+                justifyContent = "center", alignItems = "center",
+                children = { UI.Label { text = tostring(v), fontSize = 17, fontColor = { 170, 40, 30, 255 } } },
+            })
+        end
+        table.insert(headKids, UI.Panel { flexDirection = "row", gap = 5, children = row })
+    else
+        table.insert(headKids, UI.Label { text = "刮出这个符号就中奖", fontSize = 10,
+            fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 180 } })
+        table.insert(headKids, UI.Panel {
+            width = 38, height = 30, borderRadius = 4,
+            backgroundColor = { 255, 250, 238, 255 },
+            borderWidth = 1, borderColor = { skin.frame[1], skin.frame[2], skin.frame[3], 140 },
+            justifyContent = "center", alignItems = "center",
+            children = { UI.Label { text = cur.target, fontSize = 19,
+                fontColor = SYMBOL_COLOR[cur.target] or { 170, 40, 30, 255 } } },
+        })
+    end
+
+    -- 票名（压印感：深墨色）
+    local topRow = UI.Panel {
+        position = "absolute", left = cardX + 14, top = cardY + 8,
+        width = cardW - 28, height = 36,
+        pointerEvents = "none",
+        children = {
+            UI.Panel {
+                gap = 0,
+                children = {
+                    UI.Label { text = tk.name .. "  ·  " .. tk.yuan .. " 元", fontSize = 17,
+                        fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 255 } },
+                    UI.Label { text = "共 " .. cur.total .. " 次中奖机会 · 整张刮开自动开奖", fontSize = 9,
+                        fontColor = { skin.frame[1], skin.frame[2], skin.frame[3], 200 } },
+                },
+            },
+        },
+    }
 
     uiRoot_ = UI.Panel {
         width = "100%", height = "100%", backgroundColor = C.bg,
         children = {
+            -- 顶栏
             UI.Panel {
-                width = "100%", paddingTop = topPad, paddingBottom = 6,
-                paddingLeft = 14, paddingRight = 14,
+                width = "100%", paddingTop = topPad, paddingBottom = 4,
+                paddingLeft = 12, paddingRight = 12, height = topPad + headerH,
                 flexDirection = "row", justifyContent = "space-between", alignItems = "center",
                 children = {
-                    UI.Button { text = "‹", width = 42, height = 38, fontSize = 22,
+                    UI.Button { text = "‹", width = 40, height = 36, fontSize = 22,
                         backgroundColor = { 44, 34, 22, 255 }, textColor = C.goldL, borderRadius = 10,
                         onClick = function() BuildLobby() end },
-                    UI.Label { text = isLottery and (cur.ticket.name .. " · " .. cur.ticket.price .. " 币") or "HOT 全收 · 200 币",
-                        fontSize = 16, fontColor = C.goldL },
+                    UI.Label { text = tk.name .. " · " .. fmt(tk.price) .. " 币", fontSize = 15, fontColor = C.goldL },
                     UI.Label { text = "票 " .. state_.tickets, fontSize = 12, fontColor = C.green },
                 },
             },
-            -- 卡片底
+            -- 票面
             UI.Panel {
                 position = "absolute", left = cardX, top = cardY, width = cardW, height = cardH,
-                backgroundColor = { 44, 33, 20, 255 }, borderRadius = 16,
-                borderWidth = 2, borderColor = C.goldD, pointerEvents = "none",
+                backgroundColor = skin.paper, borderRadius = 8,
+                borderWidth = 2, borderColor = { skin.frame[1], skin.frame[2], skin.frame[3], 255 },
+                pointerEvents = "none",
             },
-            -- 卡头：有效符号
             UI.Panel {
-                position = "absolute", left = cardX + 16, top = cardY + 14,
-                width = cardW - 32, height = 74,
-                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
+                position = "absolute", left = cardX + 4, top = cardY + 4, width = cardW - 8, height = cardH - 8,
+                borderRadius = 6, borderWidth = 1,
+                borderColor = { skin.frame[1], skin.frame[2], skin.frame[3], 90 },
+                pointerEvents = "none",
+            },
+            topRow,
+            UI.Panel { position = "absolute", left = cardX + 14, top = cardY + 50,
+                width = cardW - 28, height = 40, flexDirection = "row",
+                alignItems = "center", gap = 10, children = headKids },
+            UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
+                pointerEvents = "none", children = titles },
+            UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
+                pointerEvents = "none", children = widgets },
+            -- 底部：进度 + 提示
+            UI.Panel {
+                position = "absolute", left = 16, right = 16, bottom = 20, gap = 6, alignItems = "center",
                 pointerEvents = "none",
                 children = {
-                    UI.Panel { gap = 3, children = {
-                        UI.Label { text = "本张有效符号", fontSize = 11, fontColor = C.dim },
-                        UI.Label { text = isLottery and ("找出 3 个「" .. cur.winning .. "」") or "刮出 HOT，16 格全收",
-                            fontSize = 15, fontColor = C.text },
-                    }},
-                    UI.Panel { width = 58, height = 58, borderRadius = 29,
-                        backgroundColor = { 28, 21, 13, 255 }, borderWidth = 2,
-                        borderColor = { winColor[1], winColor[2], winColor[3], 220 },
-                        justifyContent = "center", alignItems = "center",
-                        children = { UI.Label { text = isLottery and cur.winning or "奖",
-                            fontSize = 30, fontColor = winColor } } },
-                },
-            },
-            UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
-                pointerEvents = "none", children = cellWidgets },
-            UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
-                pointerEvents = "none", children = foilWidgets },
-            -- 进度与奖级
-            UI.Panel {
-                position = "absolute", left = cardX + 16, top = cardY + cardH + 12, width = cardW - 32, gap = 8,
-                alignItems = "center", pointerEvents = "none",
-                children = {
-                    UI.Label { id = "scratchPct", text = "刮开 0% · 刮到 78% 自动揭晓", fontSize = 11, fontColor = C.dim },
-                    UI.Panel { width = "100%", height = 6, backgroundColor = { 38, 30, 20, 255 }, borderRadius = 3,
-                        children = { UI.Panel { id = "scratchBar", width = "0%", height = 6,
+                    UI.Label { id = "scratchPct", text = "刮开 0% · 全部刮开即开奖", fontSize = 11, fontColor = C.dim },
+                    UI.Panel { width = "100%", height = 5, backgroundColor = { 38, 30, 20, 255 }, borderRadius = 3,
+                        children = { UI.Panel { id = "scratchBar", width = 1, height = 5,
                             backgroundColor = C.gold, borderRadius = 3 } } },
-                    UI.Label { text = rewardRow, fontSize = 10, fontColor = { 150, 132, 100, 235 }, textAlign = "center" },
-                },
-            },
-            UI.Panel { position = "absolute", bottom = 34, left = 16, right = 16,
-                children = {
-                    UI.Button { text = "懒得刮 · 直接揭晓", width = "100%", height = 46, fontSize = 14,
-                        backgroundColor = { 46, 37, 24, 255 }, textColor = C.goldL, borderRadius = 10,
-                        borderWidth = 1, borderColor = { 120, 96, 50, 255 },
-                        onClick = function() RevealAll() end },
+                    UI.Label { id = "scratchHint", text = "用手指刮开银色涂层",
+                        fontSize = 10, fontColor = { 150, 132, 100, 220 } },
                 },
             },
         },
     }
     UI.SetRoot(uiRoot_)
+    updateHud()
 end
 
 --- 好运十倍界面：中奖号码常显 + 10 个我的号码（2×5）
-function buildM10Screen()
-    state_.screen = "scratch"
-    local cur = scratch_.result
-    local W, H = UI.GetWidth(), UI.GetHeight()
-    local topPad = math.floor(H * 0.105)
-
-    local rows, cols = 5, 2
-    local gap = 8
-    local gridW = math.min(W * 0.86, 410)
-    local cellW = math.floor((gridW - gap) / cols)
-    local cellH = math.floor(cellW * 0.56)
-    local gridH = rows * cellH + (rows - 1) * gap
-    local cardW = gridW + 24
-    local cardH = gridH + 116
-    local cardX = math.floor((W - cardW) / 2)
-    local cardY = math.max(topPad + 54, math.floor(H * 0.16))
-    local gx = cardX + 12
-    local gy = cardY + 104
-
-    scratch_.cols, scratch_.rows = cols, rows
-    scratch_.barW = gridW
-    scratch_.rect = { x = gx, y = gy, w = gridW, h = gridH }
-    scratch_.rect2 = nil
-    scratch_.total = rows * cols
-    scratch_.removed, scratch_.removed2 = {}, {}
-    scratch_.removedCount = 0
-    scratch_.foil = {}
-
-    local cellWidgets, foilWidgets = {}, {}
-    for i = 1, rows * cols do
-        local row = math.floor((i - 1) / cols)
-        local col = (i - 1) % cols
-        local x = gx + col * (cellW + gap)
-        local y = gy + row * (cellH + gap)
-        local e = cur.entries[i]
-        local hit = (e.num == cur.winning)
-        local prizeText = e.prize .. "币" .. (e.mult > 1 and " ×10" or "")
-
-        table.insert(cellWidgets, UI.Panel {
-            position = "absolute", left = x, top = y, width = cellW, height = cellH,
-            flexDirection = "row", justifyContent = "space-between", alignItems = "center",
-            padding = 10, borderRadius = 8, borderWidth = 1,
-            backgroundColor = hit and { 62, 46, 18, 255 } or { 30, 24, 16, 255 },
-            borderColor = hit and { 150, 116, 46, 255 } or { 74, 60, 36, 255 },
-            pointerEvents = "none",
-            children = {
-                UI.Label { text = tostring(e.num), fontSize = math.floor(cellH * 0.42),
-                    fontColor = hit and C.goldL or { 214, 202, 180, 255 } },
-                UI.Label { text = prizeText, fontSize = 12,
-                    fontColor = e.mult > 1 and { 255, 140, 90, 255 } or C.dim },
-            },
-        })
-        table.insert(foilWidgets, UI.Panel {
-            position = "absolute", left = x, top = y, width = cellW, height = cellH,
-            backgroundColor = (row + col) % 2 == 0 and C.silver or C.silver2,
-            borderRadius = 8, justifyContent = "center", alignItems = "center",
-            pointerEvents = "none",
-            children = { UI.Label { text = "刮", fontSize = 18, fontColor = { 118, 124, 136, 255 } } },
-        })
-        scratch_.foil[i] = foilWidgets[#foilWidgets]
-    end
-
-    uiRoot_ = UI.Panel {
-        width = "100%", height = "100%", backgroundColor = C.bg,
-        children = {
-            UI.Panel {
-                width = "100%", paddingTop = topPad, paddingBottom = 6,
-                paddingLeft = 14, paddingRight = 14,
-                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
-                children = {
-                    UI.Button { text = "‹", width = 42, height = 38, fontSize = 22,
-                        backgroundColor = { 44, 34, 22, 255 }, textColor = C.goldL, borderRadius = 10,
-                        onClick = function() BuildLobby() end },
-                    UI.Label { text = "好运十倍 · 10 币", fontSize = 16, fontColor = C.goldL },
-                    UI.Label { text = "票 " .. state_.tickets, fontSize = 12, fontColor = C.green },
-                },
-            },
-            UI.Panel {
-                position = "absolute", left = cardX, top = cardY, width = cardW, height = cardH,
-                backgroundColor = { 44, 33, 20, 255 }, borderRadius = 16,
-                borderWidth = 2, borderColor = C.goldD, pointerEvents = "none",
-            },
-            -- 中奖号码 + 规则
-            UI.Panel {
-                position = "absolute", left = cardX + 12, top = cardY + 12,
-                width = cardW - 24, height = 80,
-                flexDirection = "row", justifyContent = "space-between", alignItems = "center",
-                pointerEvents = "none",
-                children = {
-                    UI.Panel { flexDirection = "row", alignItems = "center", gap = 10, children = {
-                        UI.Label { text = "中奖号码", fontSize = 11, fontColor = C.dim },
-                        UI.Panel { width = 56, height = 56, borderRadius = 10,
-                            backgroundColor = { 28, 21, 13, 255 }, borderWidth = 2, borderColor = C.gold,
-                            justifyContent = "center", alignItems = "center",
-                            children = { UI.Label { text = tostring(cur.winning), fontSize = 28, fontColor = C.goldL } } },
-                    }},
-                    UI.Panel { alignItems = "flex-end", gap = 3, children = {
-                        UI.Label { text = "号码相同 = 中下方奖金", fontSize = 11, fontColor = C.text },
-                        UI.Label { text = "刮出 ×10 = 该注翻十倍", fontSize = 10, fontColor = { 230, 140, 90, 235 } },
-                    }},
-                },
-            },
-            UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
-                pointerEvents = "none", children = cellWidgets },
-            UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
-                pointerEvents = "none", children = foilWidgets },
-            UI.Panel {
-                position = "absolute", left = cardX + 12, top = cardY + cardH + 12, width = cardW - 24, gap = 8,
-                alignItems = "center", pointerEvents = "none",
-                children = {
-                    UI.Label { id = "scratchPct", text = "刮开 0% · 刮到 78% 自动揭晓", fontSize = 11, fontColor = C.dim },
-                    UI.Panel { width = "100%", height = 6, backgroundColor = { 38, 30, 20, 255 }, borderRadius = 3,
-                        children = { UI.Panel { id = "scratchBar", width = 0, height = 6,
-                            backgroundColor = C.gold, borderRadius = 3 } } },
-                },
-            },
-            UI.Panel { position = "absolute", bottom = 34, left = 16, right = 16,
-                children = {
-                    UI.Button { text = "懒得刮 · 直接揭晓", width = "100%", height = 46, fontSize = 14,
-                        backgroundColor = { 46, 37, 24, 255 }, textColor = C.goldL, borderRadius = 10,
-                        borderWidth = 1, borderColor = { 120, 96, 50, 255 },
-                        onClick = function() RevealAll() end },
-                },
-            },
-        },
-    }
-    UI.SetRoot(uiRoot_)
-end
-
 function RevealAll()
     if scratch_.settled or state_.screen ~= "scratch" then return end
     scratch_.settled = true
-    local n = scratch_.total or 9
-    for i = 1, n do
-        scratch_.removed[i - 1] = true
-        local f = scratch_.foil and scratch_.foil[i]
-        if f then f:Hide() end
-    end
-    scratch_.removedCount = scratch_.total
+    for i = 1, scratch_.total do scratch_.revealed[i] = true end
+    scratch_.revealedCount = scratch_.total
     updateScratchProgress()
-    SettleScratch()
+    scratch_.settleDelay = 0.65   -- 让玩家先看清整张票
 end
 
 function SettleScratch()
     local cur = scratch_.result
-    local payout = 0
-    local detail
-
-    if scratch_.mode == "lottery" then
-        payout = cur.payout
-        if payout > 0 then
-            detail = "刮出 " .. cur.matchCount .. " 个「" .. cur.winning .. "」"
-        else
-            detail = "只刮到 " .. cur.matchCount .. " 个「" .. cur.winning .. "」，差一点"
-        end
-        state_.totalScratched = state_.totalScratched + 1
-    elseif scratch_.mode == "m10" then
-        payout = cur.payout
-        if payout > 0 then
-            detail = "命中 " .. cur.matchCount .. " 个号码" .. (cur.hasTen and " · ×10 爆奖！" or "")
-        else
-            detail = "没有刮出中奖号码「" .. cur.winning .. "」"
-        end
-        state_.totalScratched = state_.totalScratched + 1
-    else
-        if cur.isHot then
-            for _, v in ipairs(cur.cells) do payout = payout + v end
-            detail = "HOT 出现 · 16 格奖金全收"
-        else
-            for i, v in ipairs(cur.cells) do
-                if cur.dollar[i] then payout = payout + v end
-            end
-            detail = "$$ 格奖金已收集"
-        end
-        state_.totalScratched = state_.totalScratched + 1
-    end
+    local tk = cur.ticket
+    local payout = cur.payout
+    state_.totalScratched = state_.totalScratched + 1
 
     if payout > 0 then
         state_.coins = state_.coins + payout
         state_.totalWon = state_.totalWon + payout
-        local bigHit = (scratch_.mode == "hot" and cur.isHot)
-            or (scratch_.mode == "m10" and cur.hasTen)
-            or payout >= 2000
-        local r = scratch_.rect
-        spawnParticles(r.x + r.w / 2, r.y + r.h / 2, bigHit and 220 or 60, bigHit)
+        local bigHit = payout >= tk.price * 8
+        spawnParticles(UI.GetWidth() / 2, UI.GetHeight() * 0.42, bigHit and 240 or 70, bigHit)
         if bigHit then flashAlpha_ = 1.0 end
     end
 
+    local hitOnes = {}
+    for _, c in ipairs(cur.cells) do
+        if c.hit then table.insert(hitOnes, fmtShort(c.amount)) end
+    end
+
     local kids = {
-        UI.Label { text = payout > 0 and "开奖结果" or "开奖结果", fontSize = 11, fontColor = C.dim },
-        UI.Label { text = payout > 0 and ("＋" .. fmt(payout) .. " 金币") or "这张没中",
-            fontSize = payout > 0 and 30 or 24,
+        UI.Label { text = tk.name .. " · " .. tk.yuan .. " 元 · 共 " .. cur.total .. " 次",
+            fontSize = 11, fontColor = C.dim },
+        UI.Label { text = payout > 0 and ("＋" .. fmt(payout)) or "0",
+            fontSize = payout > 0 and 34 or 28,
             fontColor = payout > 0 and C.goldL or { 170, 158, 136, 255 } },
-        UI.Label { text = detail, fontSize = 13, fontColor = { 208, 192, 158, 235 } },
+        UI.Label { text = payout > 0 and "金币" or "这张没中", fontSize = 12,
+            fontColor = payout > 0 and C.gold or { 150, 140, 124, 255 } },
+        UI.Label { text = #hitOnes > 0
+                and ("中奖 " .. #hitOnes .. " 格：" .. table.concat(hitOnes, " · "))
+                or ("没有对上 · 换一张试试"),
+            fontSize = 11, fontColor = { 208, 192, 158, 235 }, textAlign = "center" },
     }
 
     if payout > 0 then
-        table.insert(kids, UI.Label { text = "奖金已到账 · 可看广告再领一份", fontSize = 11, fontColor = C.green })
+        table.insert(kids, UI.Label { text = "奖金已到账", fontSize = 11, fontColor = C.green })
         table.insert(kids, UI.Button {
             id = "doubleBtn",
             text = "看广告 · 再领 " .. fmt(payout) .. " 币",
-            width = "100%", height = 46, fontSize = 14,
+            width = "100%", height = 44, fontSize = 13,
             backgroundColor = { 62, 92, 58, 255 }, textColor = { 200, 246, 200, 255 },
             borderRadius = 10, borderWidth = 1, borderColor = { 110, 160, 100, 255 },
             onClick = function(self)
                 ShowAd("A2", function()
-                    self:SetText("已翻倍到账")
+                    self:SetText("已再领一份")
                     self:SetDisabled(true)
                     updateHud()
                 end, payout)
             end,
         })
-        table.insert(kids, darkBtn("收下 · 再来一张", function()
-            if scratch_.mode == "lottery" then StartScratch(cur.ticket)
-            elseif scratch_.mode == "m10" then StartM10()
-            else StartHot() end
-        end))
-    else
-        table.insert(kids, goldBtn("再来一张", function()
-            if scratch_.mode == "lottery" then StartScratch(cur.ticket)
-            elseif scratch_.mode == "m10" then StartM10()
-            else StartHot() end
-        end))
     end
+
+    table.insert(kids, goldBtn(payout > 0 and "收下 · 再来一张" or "再来一张", function()
+        StartTicket(tk)
+    end, { height = 44 }))
     table.insert(kids, UI.Button {
-        text = "回大厅", width = "100%", height = 40, fontSize = 13,
+        text = "回大厅", width = "100%", height = 38, fontSize = 12,
         backgroundColor = { 0, 0, 0, 0 }, textColor = C.dim, borderRadius = 8,
         onClick = function() BuildLobby() end,
     })
-    table.insert(kids, UI.Label { text = "剩余票 " .. state_.tickets .. " 张",
-        fontSize = 10, fontColor = { 130, 116, 92, 220 } })
 
     local banner = UI.Panel {
         id = "resultBanner",
         position = "absolute", top = 0, left = 0, right = 0, bottom = 0,
-        backgroundColor = { 0, 0, 0, 205 },
-        justifyContent = "center", alignItems = "center", padding = 22,
+        backgroundColor = { 0, 0, 0, 208 },
+        justifyContent = "center", alignItems = "center", padding = 20,
         children = {
             UI.Panel {
-                width = "100%", maxWidth = 340, padding = 22, gap = 10, alignItems = "stretch",
+                width = "100%", maxWidth = 340, padding = 20, gap = 8, alignItems = "stretch",
                 backgroundColor = payout > 0 and { 52, 40, 18, 255 } or { 38, 33, 27, 255 },
                 borderRadius = 18, borderWidth = 2,
                 borderColor = payout > 0 and C.gold or { 104, 94, 80, 220 },
@@ -1787,15 +1820,17 @@ function SettleWheel()
         state_.energy = math.min(ECO.energyCap, state_.energy + 1)
         msg = "再来一次 · 电已返还"
     elseif s.type == "coin" then
-        state_.coins = state_.coins + s.value
-        msg = "+" .. fmt(s.value) .. " 金币"
-        if s.value >= 20000 then
+        local v = wheelValue(s)
+        state_.coins = state_.coins + v
+        msg = "+" .. fmt(v) .. " 金币"
+        if v >= SCALE() * 8 then
             spawnParticles(UI.GetWidth()/2, UI.GetHeight()*0.325, 220, true)
             flashAlpha_ = 1.0
         end
     elseif s.type == "jackpot" then
-        state_.coins = state_.coins + s.value
-        msg = "头奖 +" .. fmt(s.value) .. " 金币"
+        local v = wheelValue(s)
+        state_.coins = state_.coins + v
+        msg = "头奖 +" .. fmt(v) .. " 金币"
         spawnParticles(UI.GetWidth()/2, UI.GetHeight()*0.325, 260, true)
         flashAlpha_ = 1.0
     elseif s.type == "ticket" then
