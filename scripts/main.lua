@@ -1123,9 +1123,9 @@ function BuildLobby()
     end
 
     -- 好运十倍（体彩经典玩法）
-    local m10Unlocked = state_.totalScratched >= 8
+    local m10Unlocked = true  -- 好运十倍直接开放，作为第二种核心玩法
     table.insert(ticketBtns, UI.Button {
-        text = m10Unlocked and "好运十倍   10币" or "好运十倍 · 刮满 8 张",
+        text = "好运十倍   10币",
         width = "48%", height = 52, fontSize = 13,
         backgroundColor = m10Unlocked and { 62, 30, 26, 255 } or { 30, 25, 20, 255 },
         textColor = m10Unlocked and { 255, 176, 140, 255 } or { 122, 110, 90, 255 },
