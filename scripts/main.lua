@@ -118,12 +118,14 @@ local sfxPools_  = {}   -- name → { src... , i }
 local scratchSrc_ = nil
 local scratchOn_ = false
 local audioOK_ = false
+local audioScene_ = nil
 
 function InitAudio()
     local ok, err = pcall(function()
-        local scene = Scene()
-        local node = scene:CreateChild("Sfx")
-        local lst = scene:CreateChild("Listener")
+        -- 场景必须由上值持有，否则会被 GC 回收，SoundSource 随之失效
+        audioScene_ = Scene()
+        local node = audioScene_:CreateChild("Sfx")
+        local lst = audioScene_:CreateChild("Listener")
         lst:CreateComponent("SoundListener")
         for name, path in pairs(SFX_FILES) do
             local snd = cache:GetResource("Sound", path)
@@ -133,12 +135,12 @@ function InitAudio()
                 for k = 1, 4 do
                     local src = node:CreateComponent("SoundSource")
                     if src then
-                        src.soundType = "Effect"
+                        pcall(function() src.soundType = "Effect" end)
                         pool[#pool + 1] = src
                     end
                 end
                 if #pool > 0 then sfxPools_[name] = pool end
-                if name == "scratch" then snd:SetLooped(true) end
+                if name == "scratch" then pcall(function() snd:SetLooped(true) end) end
             end
         end
         if sfxPools_.scratch and #sfxPools_.scratch > 0 then
