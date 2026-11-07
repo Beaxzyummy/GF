@@ -2316,13 +2316,17 @@ function ShowTutorial()
                 backgroundColor = { 40, 30, 19, 255 }, borderRadius = 18,
                 borderWidth = 2, borderColor = C.gold,
                 children = {
-                    UI.Label { text = "怎么玩", fontSize = 22, fontColor = C.goldL, textAlign = "center" },
-                    UI.Label { text = "1. 大厅挑档位（5-50 元），进柜台看 3 张候选票", fontSize = 12, fontColor = C.text },
-                    UI.Label { text = "2. 每张票已提前揭开 3 格真实结果——照着挑你喜欢的", fontSize = 12, fontColor = C.text },
-                    UI.Label { text = "3. 稳型中奖多、奖小；冲型奖大但常空手", fontSize = 12, fontColor = C.text },
-                    UI.Label { text = "4. 刮开银色涂层，每刮一格就是一次判定，全部刮完开奖", fontSize = 12, fontColor = C.text },
-                    UI.Label { text = "5. 每张 +4 手气，满 40 得运势券，用券必出一笔大奖", fontSize = 12, fontColor = C.text },
-                    UI.Label { text = "6. 金币往上只有两个去处：升级店铺、换更好的刮刀", fontSize = 12, fontColor = C.text },
+                    UI.Label { text = "三步上手", fontSize = 22, fontColor = C.goldL, textAlign = "center" },
+                    UI.Label { text = "① 选档位 → ② 从 3 张候选里挑 1 张 → ③ 手指刮开涂层", fontSize = 13,
+                        fontColor = C.goldL, textAlign = "center" },
+                    UI.Label { text = "每张票 8-35 格，每格都是一次独立判定；全刮完自动开奖，钱直接进账。",
+                        fontSize = 11.5, fontColor = C.text },
+                    UI.Label { text = "候选票会提前揭开 3 格真结果——照着这个挑，比闭眼买强。",
+                        fontSize = 11.5, fontColor = C.text },
+                    UI.Label { text = "三种票型同价同回报：稳型常中小的，冲型少见但能很大。",
+                        fontSize = 11.5, fontColor = C.text },
+                    UI.Label { text = "金币只往两个地方去：把店铺做大，把刮刀换好。",
+                        fontSize = 11.5, fontColor = { 236, 206, 140, 255 } },
                     UI.Button {
                         text = "音效：" .. ((state_.sfxOn ~= false) and "开" or "关"),
                         height = 34, width = "100%", fontSize = 12,
@@ -2334,11 +2338,12 @@ function ShowTutorial()
                             if state_.sfxOn then SFX("click", 0.6) end
                         end,
                     },
-                    goldBtn("知道了，开始刮卡", function()
+                    goldBtn("开始 · 直接进 5 元柜台", function()
                         state_.seenTutorial = true
                         saveGame()
                         local o = uiRoot_ and uiRoot_:FindById("tutOverlay")
                         if o then o:Hide() end
+                        BuildCounter(5)
                     end),
                 },
             },
