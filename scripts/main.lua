@@ -48,6 +48,46 @@ local TICKET_DEFS = {
 }
 local TICKETS = TICKET_DEFS
 
+-- 全局 UI 根（提前声明：ShowAd 等函数在其后定义，需先有 local 绑定）
+local uiRoot_ = nil
+
+-- 档位工具（必须在 updateHud / 大厅之前定义，Lua 的 local 作用域从声明处开始）
+--- 某档位下已解锁的票
+local function tierTickets(tier)
+    local list = {}
+    for _, tk in ipairs(TICKET_DEFS) do
+        if tk.yuan == tier and (state_.totalScratched or 0) >= (tk.unlock or 0) then
+            list[#list + 1] = tk
+        end
+    end
+    return list
+end
+
+--- 该档位最早解锁时需要的刮卡数（全部未解锁时用）
+local function tierUnlockNeed(tier)
+    local need = nil
+    for _, tk in ipairs(TICKET_DEFS) do
+        if tk.yuan == tier then
+            local u = tk.unlock or 0
+            if need == nil or u < need then need = u end
+        end
+    end
+    return need or 0
+end
+
+local function tiersList()
+    local seen, out = {}, {}
+    for _, tk in ipairs(TICKET_DEFS) do
+        if not seen[tk.yuan] then
+            seen[tk.yuan] = true
+            out[#out + 1] = tk.yuan
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+
 -- 柜台三选一 / 手气槽（GDD 5.6 / 6.2）
 local PEEK_CELLS     = 3     -- 每张候选票购买前揭开几格（真实结果的子集）
 local CANDIDATES     = 3     -- 每次给几张候选
@@ -707,7 +747,6 @@ end
 -- 4. 运行时状态
 -- ============================================================================
 
-local uiRoot_ = nil
 local nvgCtx_ = nil
 local offlineBill_ = nil
 local bankBill_ = nil
@@ -1379,41 +1418,6 @@ end
 -- ============================================================================
 
 local peekState_ = { tier = 5, cands = {}, rerollAt = 0, voucherUsed = false }
-
---- 某档位下已解锁的票
-local function tierTickets(tier)
-    local list = {}
-    for _, tk in ipairs(TICKET_DEFS) do
-        if tk.yuan == tier and (state_.totalScratched or 0) >= (tk.unlock or 0) then
-            list[#list + 1] = tk
-        end
-    end
-    return list
-end
-
---- 该档位最早解锁时需要的刮卡数（全部未解锁时用）
-local function tierUnlockNeed(tier)
-    local need = nil
-    for _, tk in ipairs(TICKET_DEFS) do
-        if tk.yuan == tier then
-            local u = tk.unlock or 0
-            if need == nil or u < need then need = u end
-        end
-    end
-    return need or 0
-end
-
-local function tiersList()
-    local seen, out = {}, {}
-    for _, tk in ipairs(TICKET_DEFS) do
-        if not seen[tk.yuan] then
-            seen[tk.yuan] = true
-            out[#out + 1] = tk.yuan
-        end
-    end
-    table.sort(out)
-    return out
-end
 
 --- 生成 3 张同档候选票：稳 / 平 / 冲 各一张，顺序打乱
 --- @param useVoucher boolean 是否用运势券（三张都按券规则生成，选中即消耗）
