@@ -92,8 +92,8 @@ end
 local BOOK_SIZE      = 50    -- 一本 50 张，卖完自动换新本
 local BOOKS_PER_TIER = 3     -- 柜台同时摆 3 本，玩家自己挑
 local BIG_MULT       = 15    -- 本内头奖：1/50 张，15 倍票面
-local HEAD_ODDS      = 1 / 1500  -- 跨本巨奖：150 倍票面
-local HEAD_MULT      = 150
+local HEAD_ODDS      = 1 / 500   -- 跨本巨奖：50 倍票面
+local HEAD_MULT      = 50
 local LUCK_GAIN      = 1     -- 每买一张盖 1 个点
 local LUCK_CAP       = 10    -- 满 10 点换 1 张赠票（买十送一）
 local VOUCHER_MAX    = 2     -- 赠票上限，满了不再累积
@@ -1664,8 +1664,7 @@ function buyTicket(tk)
     local isBig = (b.sold == b.bigAt) and not b.bigHit
     if isBig then b.bigHit = true end
     local isHead = (rng() < HEAD_ODDS)
-    local mult = nil
-    StartTicket(tk, tk.style or 2, { big = isBig, head = isHead, book = b })
+    StartTicket(tk, tk.style or 2, { big = isBig, head = isHead, book = b, prepaid = true })
     saveGame()
 end
 
@@ -2291,8 +2290,11 @@ end
 --- 开始刮一张票
 --- @param opts table|nil { big=本内头奖, head=跨本巨奖, book=所属本 }
 function StartTicket(tk, styleIdx, opts)
-    if not enterTicket(tk.price, tk.name) then return false end
     opts = opts or {}
+    -- prepaid：buyTicket 已经扣过费，避免双重扣款
+    if not opts.prepaid then
+        if not enterTicket(tk.price, tk.name) then return false end
+    end
     local res = generateTicket(tk, styleIdx or 2, opts)
     scratch_ = {
         mode = "multi", result = res, book = opts.book,
@@ -3118,3 +3120,26 @@ function BuildStaff()
     }
     UI.SetRoot(uiRoot_)
 end
+
+-- ============================================================================
+-- 调试接口（headless 冒烟测试用，不影响正常运行）
+-- ============================================================================
+
+function DebugInfo()
+    return {
+        screen = state_.screen,
+        coins = state_.coins,
+        tickets = state_.tickets,
+        vouchers = state_.vouchers,
+        luckGauge = state_.luckGauge,
+        total = scratch_ and scratch_.total or 0,
+        payout = (scratch_ and scratch_.result) and scratch_.result.payout or 0,
+        cellsHit = (scratch_ and scratch_.result) and scratch_.result.hitCount or 0,
+        bookSerial = (scratch_ and scratch_.book) and scratch_.book.serial or "",
+        bookTk = (scratch_ and scratch_.book) and "y" or "n",
+    }
+end
+
+function DebugTierTickets(tier) return tierTickets(tier) end
+function DebugBookOf(tkId) return state_.books and state_.books[tkId] or nil end
+function DebugBookCount() local n = 0; for _ in pairs(state_.books or {}) do n = n + 1 end; return n end
