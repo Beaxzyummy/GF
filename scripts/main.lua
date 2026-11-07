@@ -48,19 +48,57 @@ local TICKET_DEFS = {
 }
 local TICKETS = TICKET_DEFS
 
--- 单格倍数池（GDD 14.5），E[m] = 2.08
-local MULT_POOL = {
-    {1.0, 0.5500}, {1.5, 0.2200}, {2.0, 0.1200}, {3.0, 0.0600}, {5.0, 0.0300},
-    {10, 0.0130}, {30, 0.0050}, {100, 0.0015}, {300, 0.0004}, {800, 0.0001},
+-- 柜台三选一 / 手气槽（GDD 5.6 / 6.2）
+local PEEK_CELLS     = 3     -- 每张候选票购买前揭开几格（真实结果的子集）
+local CANDIDATES     = 3     -- 每次给几张候选
+local REROLL_COOLDOWN = 30   -- 换一批冷却（秒），且重置手气槽
+local LUCK_GAIN      = 4     -- 每刮完一张 +4
+local LUCK_CAP       = 40    -- 满 40 出一张运势券
+local VOUCHER_MAX    = 2     -- 券上限，满了槽不再累积
+
+--- 票型：稳 / 平 / 冲（GDD 5.3）。同价、同面额、同 RTP，只改「命中格数 K」与「倍数」的分布形状。
+--- 玩家看到的差别只有一条：稳型中奖率高但奖小，冲型中奖率低但一局能很大。
+local STYLES = {
+    { id="steady", name="稳", desc="常出小奖", kScale=1.28 },
+    { id="normal", name="平", desc="中规中矩", kScale=1.0 },
+    { id="wild", name="冲", desc="奖大常空", kScale=0.72 },
 }
 
--- 命中格数 K 的分布（下标 1 = K=0），按面额档位；均值决定 RTP
+-- K 分布：[面额][票型 1稳/2平/3冲] → 分布（下标 1 = K=0）
+-- 生成方式：对 baseline 做指数倾斜 E[K] = baseline × kScale，再配对应倍数池使 E[K]×E[m] ≡ 该档 RTP
 local K_DIST = {
-    [5]  = {0.490, 0.320, 0.145, 0.045},
-    [10] = {0.430, 0.380, 0.140, 0.040, 0.010},
-    [20] = {0.390, 0.400, 0.150, 0.050, 0.010},
-    [30] = {0.330, 0.420, 0.170, 0.060, 0.020},
-    [50] = {0.280, 0.430, 0.190, 0.070, 0.030},
+    [5] = {   -- RTP 1.5496 / 中奖率随票型 40-81%
+        { 0.395638, 0.332689, 0.194107, 0.077566 },  -- steady E[K]=0.9536
+        { 0.490000, 0.320000, 0.145000, 0.045000 },  -- normal E[K]=0.7450
+        { 0.599919, 0.284963, 0.093918, 0.021200 },  -- wild E[K]=0.5364
+    },
+    [10] = {   -- RTP 1.7056 / 中奖率随票型 40-81%
+        { 0.338030, 0.386905, 0.184622, 0.068321, 0.022122 },  -- steady E[K]=1.0496
+        { 0.430000, 0.380000, 0.140000, 0.040000, 0.010000 },  -- normal E[K]=0.8200
+        { 0.545701, 0.342946, 0.089851, 0.018256, 0.003246 },  -- wild E[K]=0.5904
+    },
+    [20] = {   -- RTP 1.8512 / 中奖率随票型 40-81%
+        { 0.296405, 0.398912, 0.196293, 0.085858, 0.022532 },  -- steady E[K]=1.1392
+        { 0.390000, 0.400000, 0.150000, 0.050000, 0.010000 },  -- normal E[K]=0.8900
+        { 0.510452, 0.367212, 0.096586, 0.022582, 0.003168 },  -- wild E[K]=0.6408
+    },
+    [30] = {   -- RTP 2.1216 / 中奖率随票型 40-81%
+        { 0.239806, 0.402155, 0.214483, 0.099746, 0.043810 },  -- steady E[K]=1.3056
+        { 0.330000, 0.420000, 0.170000, 0.060000, 0.020000 },  -- normal E[K]=1.0200
+        { 0.452766, 0.400515, 0.112675, 0.027640, 0.006404 },  -- wild E[K]=0.7344
+    },
+    [50] = {   -- RTP 2.3712 / 中奖率随票型 40-81%
+        { 0.194005, 0.395639, 0.232145, 0.113574, 0.064637 },  -- steady E[K]=1.4592
+        { 0.280000, 0.430000, 0.190000, 0.070000, 0.030000 },  -- normal E[K]=1.1400
+        { 0.402900, 0.425445, 0.129260, 0.032745, 0.009650 },  -- wild E[K]=0.8208
+    },
+}
+
+-- 倍数池：[票型] → { {倍数, 概率} ... }。E[m] = RTP / E[K] 与面额无关，所以只需三套
+local MULT_POOLS = {
+    { {1, 0.596321}, {1.5, 0.214500}, {2, 0.108510}, {3, 0.048789}, {5, 0.021340}, {10, 0.007712}, {30, 0.002225}, {100, 0.000487}, {300, 0.000097}, {800, 0.000019} },   -- steady E[m]=1.6250
+    { {1, 0.550000}, {1.5, 0.220000}, {2, 0.120000}, {3, 0.060000}, {5, 0.030000}, {10, 0.013000}, {30, 0.005000}, {100, 0.001500}, {300, 0.000400}, {800, 0.000100} },   -- normal E[m]=2.0800
+    { {1, 0.511798}, {1.5, 0.221248}, {2, 0.127515}, {3, 0.068905}, {5, 0.037993}, {10, 0.018801}, {30, 0.008924}, {100, 0.003371}, {300, 0.001110}, {800, 0.000335} },   -- wild E[m]=2.8892
 }
 
 -- 票面皮肤（对齐美术圣经 v2.1；纯代码可画）
@@ -237,17 +275,19 @@ local function weightedSym(exclude)
     return SYMBOLS[idxs[#idxs]]
 end
 
-local function pickMult()
+local function pickMult(styleIdx)
+    local pool = MULT_POOLS[styleIdx] or MULT_POOLS[2]
     local r, acc = rng(), 0
-    for _, t in ipairs(MULT_POOL) do
+    for _, t in ipairs(pool) do
         acc = acc + t[2]
         if r < acc then return t[1] end
     end
     return 1.0
 end
 
-local function pickK(tk)
-    local dist = K_DIST[tk.yuan] or K_DIST[10]
+local function pickK(yuan, styleIdx)
+    local byStyle = K_DIST[yuan] or K_DIST[10]
+    local dist = byStyle[styleIdx] or byStyle[2]
     local r, acc = rng(), 0
     for i, p in ipairs(dist) do
         acc = acc + p
@@ -271,15 +311,19 @@ function fmtShort(n)
     return tostring(n)
 end
 
---- 多局票生成：先抽命中格数 K → 再抽每个命中格的倍数 m → 最后倒填符号 / 号码
---- EV = E[K] × E[m] × price ≡ RTP × price
-local function generateTicket(tk)
+--- 多局票生成：先抽命中格数 K → 每格抽倍数 m → 倒填符号 / 号码
+--- EV = E[K] × E[m] ≡ 该档 RTP（三档票型严格相等，见 K_DIST 注释）
+--- @param styleIdx number 1=稳 2=平 3=冲
+--- @param useVoucher boolean 运势券：保证至少 1 格命中，且该格 m ≥ 2.0
+--- @param peekCount number 预揭格数（购买前即揭开，计入已刮进度）
+local function generateTicket(tk, styleIdx, useVoucher, peekCount)
+    styleIdx = styleIdx or 2
     local total = 0
     for _, z in ipairs(tk.zones) do total = total + z.cols * z.rows end
 
-    local k = pickK(tk)
-    -- 首张票：固定 2 格命中（GDD 14.6 首日脚本），保证第一张必中
-    if state_ and (state_.totalScratched or 0) == 0 then k = 2 end
+    local k = pickK(tk.yuan, styleIdx)
+    if state_ and (state_.totalScratched or 0) == 0 then k = 2 end   -- 首张票必中（GDD 14.6）
+    if useVoucher and k < 1 then k = 1 end
     if k > total then k = total end
     if k > 5 then k = 5 end
 
@@ -311,7 +355,7 @@ local function generateTicket(tk)
     for zi, z in ipairs(tk.zones) do
         for c = 1, z.cols * z.rows do
             local isHit = hitSet[idx] == true
-            local mult = isHit and pickMult() or (rng() < 0.62 and 1.0 or 1.5)
+            local mult = pickMult(styleIdx)
             local amount = math.floor(tk.price * mult)
             local val
             if tk.judge == "number" then
@@ -339,13 +383,55 @@ local function generateTicket(tk)
         end
     end
 
+    -- 新手首张票：金额也固定（2 格 × 1 倍 = 2×票价），第一眼体验可预期
+    if state_ and (state_.totalScratched or 0) == 0 then
+        local cnt = 0
+        for _, c in ipairs(cells) do
+            if c.hit and cnt < 2 then
+                c.mult = 1.0
+                c.amount = tk.price
+                cnt = cnt + 1
+            end
+        end
+    end
+
+    -- 运势券：保证有一笔「像样的中奖」——命中格里至少一格 m ≥ 2.0
+    if useVoucher and k > 0 then
+        local hasBig = false
+        for _, c in ipairs(cells) do
+            if c.hit and c.mult >= 2.0 then hasBig = true; break end
+        end
+        if not hasBig then
+            local hits = {}
+            for i, c in ipairs(cells) do if c.hit then hits[#hits + 1] = i end end
+            local pick = hits[math.floor(rng() * #hits) + 1]
+            local c = cells[pick]
+            c.mult = 2.0
+            c.amount = math.floor(tk.price * c.mult)
+        end
+    end
+
+    -- 预揭：随机抽 N 格提前揭开（是真实结果的子集，不改分布，GDD 5.6）
+    local peeked = {}
+    peekCount = math.min(peekCount or 0, total)
+    local guard2 = 0
+    while #peeked < peekCount and guard2 < 300 do
+        guard2 = guard2 + 1
+        local i = math.floor(rng() * total) + 1
+        if not cells[i].revealed then
+            cells[i].revealed = true
+            peeked[#peeked + 1] = i
+        end
+    end
+
     local payout, hitCount = 0, 0
     for _, c in ipairs(cells) do
         if c.hit then payout = payout + c.amount; hitCount = hitCount + 1 end
     end
 
-    return { kind = "multi", ticket = tk, cells = cells, lucky = lucky, target = target,
-             payout = payout, hitCount = hitCount, total = total, zones = tk.zones }
+    return { kind = "multi", ticket = tk, styleIdx = styleIdx, cells = cells, lucky = lucky,
+             target = target, payout = payout, hitCount = hitCount, total = total,
+             zones = tk.zones, peeked = peeked, usedVoucher = useVoucher == true }
 end
 
 --- 抽卡
@@ -419,7 +505,11 @@ function defaultState()
         lastSeen=os.time(),
         ads={ day=0, total=0, byPlacement={}, lastTs=0 },
         seenTutorial=false,
-        ver=21,
+        luckGauge=0,         -- 手气槽 0..LUCK_CAP，每刮完一张 +4
+        vouchers=0,          -- 运势券 0..VOUCHER_MAX
+        counterTier=5,       -- 柜台当前档位（元）
+        lastReroll=0,        -- 换一批冷却
+        ver=22,
     }
 end
 
@@ -468,10 +558,16 @@ function loadGame()
     end
     -- v2.1 面额重定标：旧存档的金币量级是 1/200，补到能买第一张 5 元票
     if (tonumber(d.ver) or 0) < 21 then
-        d.ver = 21
         if d.coins < 5000 then d.coins = 5000 end
         if d.tickets < 20 then d.tickets = 20 end
     end
+    -- v2.2 手气槽 / 运势券
+    if (tonumber(d.ver) or 0) < 22 then
+        if type(d.luckGauge) ~= "number" then d.luckGauge = 0 end
+        if type(d.vouchers) ~= "number" then d.vouchers = 0 end
+        if type(d.counterTier) ~= "number" then d.counterTier = 5 end
+    end
+    d.ver = 22
     state_ = d
     return true
 end
@@ -1227,88 +1323,364 @@ function updateHud()
     updateCurrencyBar()
     if not uiRoot_ then return end
     local stat = uiRoot_:FindById("statLabel") --[[@as Label?]]
-    if stat then stat:SetText("今日已刮 " .. state_.totalScratched .. " 张 · 累计中奖 " .. fmt(state_.totalWon)
-        .. " 金币 · 员工产出 " .. totalProduction() .. "/秒") end
+    if stat then stat:SetText("已刮 " .. state_.totalScratched .. " 张 · 累计 " .. fmt(state_.totalWon)
+        .. " 币 · 产出 " .. totalProduction() .. "/秒") end
+
     local a1 = uiRoot_:FindById("a1Btn") --[[@as Button?]]
     if a1 and state_.ads then
-        a1:SetText("没票了？看广告 +20 票（今日 " .. (state_.ads.byPlacement.A1 or 0) .. "/8）")
+        a1:SetText("补票 +20（" .. (state_.ads.byPlacement.A1 or 0) .. "/8）")
     end
 
-    -- 档位进度：下一个未解锁的票
-    local nextTk, unlockedN = nil, 0
-    for _, tk in ipairs(TICKET_DEFS) do
-        if (state_.totalScratched or 0) >= (tk.unlock or 0) then
-            unlockedN = unlockedN + 1
-        elseif not nextTk then
-            nextTk = tk
-        end
-    end
-    local hint = uiRoot_:FindById("counterHint")
-    if hint then
-        hint:SetText("已解锁 " .. unlockedN .. "/" .. #TICKET_DEFS .. " 款 · 一张票 8-40 次机会")
-    end
-    local tl = uiRoot_:FindById("tierLabel")
-    if tl then tl:SetText(unlockedN .. "/" .. #TICKET_DEFS .. " 款") end
-    local th = uiRoot_:FindById("tierHint")
-    if th then
-        if nextTk then
-            th:SetText("再刮 " .. math.max(0, (nextTk.unlock or 0) - (state_.totalScratched or 0))
-                .. " 张解锁「" .. nextTk.name .. "」· " .. nextTk.yuan .. " 元")
+    -- 手气槽
+    local g, v = state_.luckGauge or 0, state_.vouchers or 0
+    local lt = uiRoot_:FindById("luckText") --[[@as Label?]]
+    if lt then
+        if v >= VOUCHER_MAX then
+            lt:SetText("运势券已满 " .. v .. "/" .. VOUCHER_MAX .. " · 先用掉一张")
+        elseif g >= LUCK_CAP then
+            lt:SetText("手气槽已满 · 下一张出券")
         else
-            th:SetText("全部档位已解锁 · 追求更高的单张奖金")
+            lt:SetText("手气槽 " .. g .. "/" .. LUCK_CAP .. " · 再 " .. math.ceil((LUCK_CAP - g) / LUCK_GAIN) .. " 张有券")
         end
     end
-    local tb = uiRoot_:FindById("tierBar")
-    if tb then
-        tb:SetWidth(math.max(6, math.floor(248 * unlockedN / #TICKET_DEFS)))
+    local lv = uiRoot_:FindById("luckVoucher") --[[@as Label?]]
+    if lv then lv:SetText("券 " .. v .. "/" .. VOUCHER_MAX); lv:SetFontColor(v > 0 and C.goldL or C.dim) end
+    local lb = uiRoot_:FindById("luckBar")
+    if lb then lb:SetWidth(math.max(4, math.floor((UI.GetWidth() - 48) * g / LUCK_CAP))) end
+
+    -- 票架各档状态（解锁数会随刮卡数变化）
+    local unlockedN = 0
+    for _, tk in ipairs(TICKET_DEFS) do
+        if (state_.totalScratched or 0) >= (tk.unlock or 0) then unlockedN = unlockedN + 1 end
+    end
+    local hint = uiRoot_:FindById("counterHint") --[[@as Label?]]
+    if hint then hint:SetText("已解锁 " .. unlockedN .. "/" .. #TICKET_DEFS .. " 款") end
+    for _, tier in ipairs(tiersList()) do
+        local btn = uiRoot_:FindById("tier_" .. tier) --[[@as Button?]]
+        if btn then
+            local pool = tierTickets(tier)
+            local open = #pool > 0
+            local names = {}
+            for i = 1, math.min(3, #pool) do names[#names + 1] = pool[i].name end
+            if open then
+                btn:SetText(tier .. " 元    " .. table.concat(names, " / ")
+                    .. (#pool > 3 and (" 等 " .. #pool .. " 款") or ""))
+            else
+                btn:SetText(tier .. " 元    刮 " .. tierUnlockNeed(tier) .. " 张解锁")
+            end
+            -- Button 无 SetBackgroundColor，状态靠文本表达；点击时再判定
+        end
     end
 end
 
 --- 刮卡柜台（选票）
+-- ============================================================================
+-- 9.5 柜台三选一（GDD 系统 A / 系统 B）
+-- ============================================================================
+
+local peekState_ = { tier = 5, cands = {}, rerollAt = 0, voucherUsed = false }
+
+--- 某档位下已解锁的票
+local function tierTickets(tier)
+    local list = {}
+    for _, tk in ipairs(TICKET_DEFS) do
+        if tk.yuan == tier and (state_.totalScratched or 0) >= (tk.unlock or 0) then
+            list[#list + 1] = tk
+        end
+    end
+    return list
+end
+
+--- 该档位最早解锁时需要的刮卡数（全部未解锁时用）
+local function tierUnlockNeed(tier)
+    local need = nil
+    for _, tk in ipairs(TICKET_DEFS) do
+        if tk.yuan == tier then
+            local u = tk.unlock or 0
+            if need == nil or u < need then need = u end
+        end
+    end
+    return need or 0
+end
+
+local function tiersList()
+    local seen, out = {}, {}
+    for _, tk in ipairs(TICKET_DEFS) do
+        if not seen[tk.yuan] then
+            seen[tk.yuan] = true
+            out[#out + 1] = tk.yuan
+        end
+    end
+    table.sort(out)
+    return out
+end
+
+--- 生成 3 张同档候选票：稳 / 平 / 冲 各一张，顺序打乱
+--- @param useVoucher boolean 是否用运势券（三张都按券规则生成，选中即消耗）
+local function rollCandidates(tier, useVoucher)
+    local pool = tierTickets(tier)
+    if #pool == 0 then return {} end
+    local order = { 1, 2, 3 }
+    -- 打乱票型顺序（Fisher-Yates）
+    for i = #order, 2, -1 do
+        local j = math.floor(rng() * i) + 1
+        order[i], order[j] = order[j], order[i]
+    end
+    local cands = {}
+    for _, styleIdx in ipairs(order) do
+        local tk = pool[math.floor(rng() * #pool) + 1]
+        -- 券只对一张票生效（第一张），其余按普通生成——避免券价值被三选一稀释
+        local res = generateTicket(tk, styleIdx, false, PEEK_CELLS)
+        cands[#cands + 1] = { tk = tk, styleIdx = styleIdx, result = res }
+    end
+    if useVoucher then
+        -- 券：重掷第一张为「有保底」的票
+        local tk = pool[math.floor(rng() * #pool) + 1]
+        local res = generateTicket(tk, cands[1].styleIdx, true, PEEK_CELLS)
+        cands[1] = { tk = tk, styleIdx = cands[1].styleIdx, result = res, vouched = true }
+    end
+    return cands
+end
+
+--- 一张候选卡片
+local function candidateCard(cand, idx)
+    local tk = cand.tk
+    local st = STYLES[cand.styleIdx]
+    local res = cand.result
+    local skin = SKIN[tk.skin] or SKIN.green
+    local styleColor = ({ {112,196,148,255}, {212,175,55,255}, {228,120,90,255} })[cand.styleIdx]
+
+    -- 预揭格：小方块，命中 → 金底显示金额；未命中 → 纸底显示值
+    local peekCells = {}
+    for _, ci in ipairs(res.peeked) do
+        local c = res.cells[ci]
+        local bg = c.hit and { 212, 175, 55, 255 } or { 236, 228, 208, 255 }
+        local fg = c.hit and { 38, 28, 10, 255 } or { 120, 108, 88, 255 }
+        peekCells[#peekCells + 1] = UI.Panel {
+            width = 46, height = 46, borderRadius = 5,
+            backgroundColor = bg, borderWidth = 1,
+            borderColor = c.hit and { 255, 236, 168, 255 } or { 176, 162, 136, 255 },
+            justifyContent = "center", alignItems = "center", gap = 0,
+            children = {
+                UI.Label { text = tostring(c.val), fontSize = 13,
+                    fontColor = c.hit and { 40, 30, 12, 255 } or { 74, 64, 48, 255 } },
+                UI.Label { text = c.hit and fmtShort(c.amount) or "—", fontSize = 9,
+                    fontColor = c.hit and { 92, 60, 10, 255 } or { 168, 156, 132, 255 } },
+            },
+        }
+    end
+
+    local peekRow = UI.Panel { flexDirection = "row", gap = 5, children = peekCells }
+
+    return UI.Panel {
+        width = "100%", padding = 10, gap = 6,
+        flexDirection = "row", justifyContent = "space-between", alignItems = "center",
+        backgroundColor = { 42, 34, 24, 255 }, borderRadius = 12,
+        borderWidth = 1,
+        borderColor = cand.vouched and { 232, 200, 110, 255 } or { 92, 76, 48, 255 },
+        children = {
+            -- 左：票型徽章 + 票名
+            UI.Panel { gap = 3, width = 68, children = {
+                UI.Panel { width = 30, height = 22, borderRadius = 4,
+                    backgroundColor = styleColor, justifyContent = "center", alignItems = "center",
+                    children = { UI.Label { text = st.name, fontSize = 13, fontColor = { 30, 24, 12, 255 } } } },
+                UI.Label { text = tk.name, fontSize = 13,
+                    fontColor = { skin.paper[1], skin.paper[2], skin.paper[3], 255 } },
+                UI.Label { text = tk.yuan .. "元 · " .. res.total .. " 格", fontSize = 9, fontColor = { 176, 160, 130, 255 } },
+                UI.Label { text = cand.vouched and "★ 运势券" or st.desc, fontSize = 8,
+                    fontColor = cand.vouched and { 240, 206, 130, 255 } or { 150, 136, 108, 235 } },
+            }},
+            -- 中：预揭
+            UI.Panel { gap = 3, alignItems = "center", children = {
+                UI.Label { text = "已揭开 " .. #res.peeked .. " 格", fontSize = 9, fontColor = { 150, 134, 104, 255 } },
+                peekRow,
+            }},
+            -- 右：选择
+            UI.Button {
+                text = "选这张", width = 74, height = 46, fontSize = 13,
+                backgroundColor = C.gold, textColor = { 38, 28, 10, 255 }, borderRadius = 9,
+                onClick = function() chooseCandidate(cand) end,
+            },
+        },
+    }
+end
+
+--- 选中一张候选 → 进入刮卡
+function chooseCandidate(cand)
+    if not StartTicket(cand.tk, cand.styleIdx, cand.result) then return end
+    if cand.vouched and (state_.vouchers or 0) > 0 then
+        state_.vouchers = state_.vouchers - 1
+    end
+    state_.lastStyle = cand.styleIdx
+    peekState_.cands = {}   -- 这一批已用过一张，下次进柜台重新生成
+    saveGame()
+end
+
+--- 柜台页
+function BuildCounter(tier)
+    tier = tier or state_.counterTier or 5
+    state_.counterTier = tier
+    state_.screen = "counter"
+    if #peekState_.cands == 0 or peekState_.tier ~= tier then
+        peekState_.tier = tier
+        peekState_.cands = rollCandidates(tier, false)
+        peekState_.voucherUsed = false
+    end
+    local W = UI.GetWidth()
+    local topPad = math.floor(UI.GetHeight() * 0.105)
+    local pool = tierTickets(tier)
+    local price = #pool > 0 and pool[1].price or 0
+
+    local cards = {}
+    for i, c in ipairs(peekState_.cands) do
+        cards[#cards + 1] = candidateCard(c, i)
+    end
+    if #cards == 0 then
+        cards[1] = UI.Label { text = "该档位还没有可用票种", fontSize = 13, fontColor = C.dim }
+    end
+
+    uiRoot_ = UI.Panel {
+        width = "100%", height = "100%", backgroundColor = C.bg,
+        paddingTop = topPad, paddingLeft = 14, paddingRight = 14, paddingBottom = 18,
+        gap = 10,
+        children = {
+            -- 顶栏
+            UI.Panel { width = "100%", flexDirection = "row",
+                justifyContent = "space-between", alignItems = "center", children = {
+                UI.Button { text = "←", width = 40, height = 34, fontSize = 15,
+                    backgroundColor = C.card2, textColor = C.text, borderRadius = 8,
+                    onClick = function() peekState_.cands = {}; BuildLobby() end },
+                UI.Panel { alignItems = "flex-end", gap = 2, children = {
+                    UI.Label { text = tier .. " 元档 · 柜台", fontSize = 16, fontColor = C.goldL },
+                    UI.Label { text = "三张票 · 同价 " .. fmt(price) .. " 币 · 各已揭开 " .. PEEK_CELLS .. " 格",
+                        fontSize = 10, fontColor = C.dim },
+                }},
+            }},
+            -- 手气槽
+            luckPanel(),
+            -- 候选
+            UI.Panel { width = "100%", gap = 8, children = cards },
+            UI.Panel { width = "100%", alignItems = "center", children = {
+                UI.Label { text = "预揭的格是这张票真实结果的一部分 · 买前就能看到", fontSize = 9,
+                    fontColor = { 140, 126, 100, 230 } },
+            }},
+            -- 底部（贴底，避免中间空一大块）
+            UI.Panel { position = "absolute", left = 14, right = 14, bottom = 18,
+                flexDirection = "row", gap = 8, alignItems = "center", children = {
+                UI.Button { id = "voucherBtn",
+                    text = (state_.vouchers or 0) > 0 and ("用运势券重掷（" .. state_.vouchers .. "）") or "运势券 0 张",
+                    width = "48%", height = 44, fontSize = 12,
+                    backgroundColor = (state_.vouchers or 0) > 0 and { 92, 68, 22, 255 } or { 30, 26, 20, 255 },
+                    textColor = (state_.vouchers or 0) > 0 and { 246, 220, 150, 255 } or { 110, 100, 84, 255 },
+                    borderRadius = 9, disabled = (state_.vouchers or 0) <= 0,
+                    onClick = function() useVoucherReroll() end },
+                UI.Button { id = "rerollBtn", text = "换一批", width = "48%", height = 44, fontSize = 12,
+                    backgroundColor = C.card2, textColor = C.text, borderRadius = 9,
+                    borderWidth = 1, borderColor = { 100, 82, 46, 255 },
+                    onClick = function() rerollCandidates() end },
+            }},
+        },
+    }
+    UI.SetRoot(uiRoot_)
+    updateHud()
+end
+
+--- 手气槽条（大厅与柜台共用）
+function luckPanel()
+    local g = state_.luckGauge or 0
+    local v = state_.vouchers or 0
+    local txt
+    if v >= VOUCHER_MAX then
+        txt = "运势券已满 " .. v .. "/" .. VOUCHER_MAX .. " · 先用掉一张再攒"
+    elseif g >= LUCK_CAP then
+        txt = "手气槽已满 · 下一张出券"
+    else
+        txt = "手气槽 " .. g .. "/" .. LUCK_CAP .. " · 再 " .. math.ceil((LUCK_CAP - g) / LUCK_GAIN) .. " 张有券"
+    end
+    return UI.Panel {
+        width = "100%", padding = 10, gap = 5,
+        backgroundColor = { 46, 34, 44, 255 }, borderRadius = 10,
+        borderWidth = 1, borderColor = { 118, 86, 108, 255 },
+        children = {
+            UI.Panel { width = "100%", flexDirection = "row",
+                justifyContent = "space-between", alignItems = "center", children = {
+                UI.Label { id = "luckText", text = txt, fontSize = 11, fontColor = { 236, 206, 236, 255 } },
+                UI.Label { id = "luckVoucher", text = "券 " .. v .. "/" .. VOUCHER_MAX, fontSize = 11,
+                    fontColor = v > 0 and C.goldL or C.dim },
+            }},
+            UI.Panel { width = "100%", height = 6, backgroundColor = { 28, 22, 28, 255 },
+                borderRadius = 3,
+                children = { UI.Panel { id = "luckBar",
+                    width = math.max(4, math.floor((UI.GetWidth() - 48) * g / LUCK_CAP)), height = 6,
+                    backgroundColor = { 214, 150, 220, 255 }, borderRadius = 3 } } },
+        },
+    }
+end
+
+--- 换一批：冷却 15 秒，且清空手气槽（防止无限刷候选，GDD 5.2）
+function rerollCandidates()
+    local now = os.time()
+    local left = (peekState_.rerollAt or 0) - now
+    if left > 0 then
+        ShowToast("换一批冷却中 · 还要 " .. left .. " 秒")
+        return
+    end
+    peekState_.rerollAt = now + REROLL_COOLDOWN
+    state_.luckGauge = 0
+    peekState_.cands = rollCandidates(peekState_.tier, false)
+    peekState_.voucherUsed = false
+    local keep = state_.screen
+    BuildCounter(peekState_.tier)
+    state_.screen = keep
+    ShowToast("已换一批 · 手气槽已清空")
+end
+
+--- 用运势券重掷：消耗 1 张，第一张候选保证「至少 1 格命中且该格 ≥2 倍票面」
+function useVoucherReroll()
+    if (state_.vouchers or 0) <= 0 then
+        ShowToast("还没有运势券 · 再刮 " .. math.ceil((LUCK_CAP - (state_.luckGauge or 0)) / LUCK_GAIN) .. " 张")
+        return
+    end
+    state_.vouchers = state_.vouchers - 1
+    peekState_.cands = rollCandidates(peekState_.tier, true)
+    peekState_.voucherUsed = true
+    BuildCounter(peekState_.tier)
+    ShowToast("已用 1 张运势券 · 第一张必有像样的中奖")
+end
+
 function BuildLobby()
     state_.screen = "lobby"
     saveGame()
     local topPad = math.floor(UI.GetHeight() * 0.105)
 
-    local ticketBtns = {}
-    local unlockedList, nextTk = {}, nil
-    for _, tk in ipairs(TICKET_DEFS) do
-        if (state_.totalScratched or 0) >= (tk.unlock or 0) then
-            table.insert(unlockedList, tk)
-        elseif not nextTk then
-            nextTk = tk
+    -- 票架：5 个档位，全部可见（看得见买不起 = 最便宜的长线钩子，GDD 5.8）
+    local tierBtns = {}
+    for _, tier in ipairs(tiersList()) do
+        local pool = tierTickets(tier)
+        local need = tierUnlockNeed(tier)
+        local open = #pool > 0
+        local names = {}
+        for i = 1, math.min(3, #pool) do names[#names + 1] = pool[i].name end
+        local label
+        if open then
+            label = tier .. " 元    " .. table.concat(names, " / ")
+                .. (#pool > 3 and (" 等 " .. #pool .. " 款") or "")
+        else
+            label = tier .. " 元    刮 " .. need .. " 张解锁"
         end
-    end
-
-    -- 最多展示 6 款（价格最高的），低档位折叠成一行说明
-    local showFrom = 1
-    local folded = 0
-    if #unlockedList > 6 then
-        showFrom = #unlockedList - 5
-        folded = showFrom - 1
-    end
-    for i = showFrom, #unlockedList do
-        local tk = unlockedList[i]
-        table.insert(ticketBtns, UI.Button {
-            text = tk.name .. "  " .. tk.yuan .. "元",
-            width = "48%", height = 42, fontSize = 13,
-            backgroundColor = { 250, 244, 228, 255 },
-            textColor = { 60, 40, 26, 255 },
-            borderRadius = 6, borderWidth = 1,
-            borderColor = { 170, 130, 60, 255 },
-            onClick = function() StartTicket(tk) end,
-        })
-    end
-    if nextTk then
-        table.insert(ticketBtns, UI.Button {
-            text = "🔒 " .. nextTk.name .. " · 刮 " .. nextTk.unlock .. " 张",
-            width = "48%", height = 42, fontSize = 12,
-            backgroundColor = { 32, 27, 21, 255 },
-            textColor = { 110, 100, 86, 255 },
-            borderRadius = 6, borderWidth = 1,
-            borderColor = { 56, 48, 38, 255 },
-            disabled = true,
-        })
+        tierBtns[#tierBtns + 1] = UI.Button {
+            id = "tier_" .. tier,
+            text = label,
+            width = "100%", height = 42, fontSize = 12,
+            backgroundColor = open and { 56, 42, 24, 255 } or { 34, 29, 23, 255 },
+            textColor = open and { 246, 232, 196, 255 } or { 126, 114, 96, 255 },
+            borderRadius = 9, borderWidth = 1,
+            borderColor = open and { 158, 122, 56, 255 } or { 58, 50, 40, 255 },
+            onClick = function()
+                if open then BuildCounter(tier)
+                else ShowToast("再刮 " .. math.max(0, need - (state_.totalScratched or 0)) .. " 张解锁 " .. tier .. " 元档") end
+            end,
+        }
     end
 
     uiRoot_ = UI.Panel {
@@ -1317,100 +1689,79 @@ function BuildLobby()
         children = {
             -- 顶栏
             UI.Panel {
-                width = "100%", paddingTop = topPad, paddingBottom = 10,
+                width = "100%", paddingTop = topPad, paddingBottom = 8,
                 paddingLeft = 16, paddingRight = 16,
                 flexDirection = "row", justifyContent = "space-between", alignItems = "center",
                 children = {
                     UI.Panel { gap = 3, children = {
-                        UI.Label { text = "好运游戏厅", fontSize = 21, fontColor = C.goldL },
-                        UI.Label { text = "刮一张 · 试试今天的手气", fontSize = 11, fontColor = C.dim },
+                        UI.Label { text = "好运游戏厅", fontSize = 20, fontColor = C.goldL },
+                        UI.Label { id = "statLabel", text = "", fontSize = 10, fontColor = C.dim },
                     }},
                     UI.Panel { alignItems = "flex-end", gap = 4, children = {
                         UI.Label { id = "coinsLabel", text = "金币 " .. fmt(state_.coins), fontSize = 16, fontColor = C.gold },
-                        UI.Label { id = "ticketsLabel", text = "票 " .. state_.tickets .. " · 电 " .. state_.energy, fontSize = 11, fontColor = C.green },
+                        UI.Label { id = "ticketsLabel", text = "票 " .. state_.tickets .. " · 电 " .. state_.energy,
+                            fontSize = 11, fontColor = C.green },
                     }},
                 },
             },
             -- 主体
             UI.Panel {
-                width = "100%", paddingLeft = 16, paddingRight = 16, gap = 10,
+                width = "100%", paddingLeft = 14, paddingRight = 14, gap = 8,
                 children = {
-                    UI.Label { id = "ticketTimer", text = "", fontSize = 11, fontColor = C.dim },
+                    luckPanel(),
+                    UI.Label { id = "ticketTimer", text = "", fontSize = 9,
+                        fontColor = { 138, 124, 98, 235 } },
+                    -- 票架
                     UI.Panel {
-                        width = "100%", padding = 12, gap = 9,
+                        width = "100%", padding = 10, gap = 6,
                         backgroundColor = C.card, borderRadius = 14,
                         borderWidth = 1, borderColor = { 96, 74, 38, 255 },
                         children = {
                             UI.Panel { width = "100%", flexDirection = "row",
-                                justifyContent = "space-between", alignItems = "center",
-                                children = {
-                                    UI.Label { text = "彩票柜台", fontSize = 14, fontColor = C.text },
-                                    UI.Label { id = "counterHint", text = "", fontSize = 10, fontColor = C.dim },
-                                } },
-                            folded > 0 and UI.Label { text = "另有 " .. folded .. " 款低档票已解锁（继续往上刮更容易出货）",
-                                fontSize = 9, fontColor = { 140, 124, 96, 210 } } or UI.Panel { height = 0 },
-                            UI.Panel { width = "100%", flexDirection = "row", flexWrap = "wrap",
-                                justifyContent = "space-between", gap = 8, children = ticketBtns },
-                            UI.Label { text = "1 元 = 200 金币 · 有免费票不扣金币 · 每张 8-40 次机会",
-                                fontSize = 10, fontColor = C.dim },
-                            UI.Button { id = "a1Btn", text = "没票了？看广告 +20 票（今日 0/8）",
-                                width = "100%", height = 38, fontSize = 12,
-                                backgroundColor = { 44, 60, 44, 255 }, textColor = { 172, 228, 180, 255 },
-                                borderRadius = 9, onClick = function() ShowAd("A1", updateHud) end },
-                        },
-                    },
-                    -- 档位进度
-                    UI.Panel { width = "100%", padding = 12, gap = 5,
-                        backgroundColor = { 34, 28, 20, 255 }, borderRadius = 12,
-                        borderWidth = 1, borderColor = { 92, 72, 40, 255 },
-                        children = {
-                            UI.Panel { width = "100%", flexDirection = "row",
-                                justifyContent = "space-between", alignItems = "center",
-                                children = {
-                                    UI.Label { text = "档位进度", fontSize = 12, fontColor = C.text },
-                                    UI.Label { id = "tierLabel", text = "", fontSize = 10, fontColor = C.dim },
-                                } },
-                            UI.Panel { width = "100%", height = 5, backgroundColor = { 24, 20, 14, 255 },
-                                borderRadius = 3,
-                                children = { UI.Panel { id = "tierBar", width = "6%", height = 5,
-                                    backgroundColor = C.gold, borderRadius = 3 } } },
-                            UI.Label { id = "tierHint", text = "", fontSize = 10,
-                                fontColor = { 150, 132, 100, 230 } },
+                                justifyContent = "space-between", alignItems = "center", children = {
+                                UI.Label { text = "彩票柜台 · 选档位", fontSize = 13, fontColor = C.text },
+                                UI.Label { id = "counterHint", text = "", fontSize = 9, fontColor = C.dim },
+                            } },
+                            UI.Panel { width = "100%", gap = 5, children = tierBtns },
+                            UI.Label { text = "进柜台后从 3 张候选里挑 1 张 · 每张已揭开 3 格",
+                                fontSize = 9, fontColor = { 146, 130, 102, 230 } },
                         },
                     },
                     -- 幸运转盘
-                    UI.Panel { width = "100%", padding = 14,
+                    UI.Panel { width = "100%", padding = 12,
                         flexDirection = "row", justifyContent = "space-between", alignItems = "center",
-                        backgroundColor = { 40, 34, 54, 255 }, borderRadius = 14,
+                        backgroundColor = { 40, 34, 54, 255 }, borderRadius = 12,
                         borderWidth = 1, borderColor = { 108, 78, 148, 255 },
                         children = {
-                            UI.Panel { gap = 4, children = {
-                                UI.Label { text = "幸运转盘", fontSize = 15, fontColor = { 226, 192, 255, 255 } },
-                                UI.Label { id = "energyTimer", text = "", fontSize = 11, fontColor = { 190, 175, 215, 225 } },
+                            UI.Panel { gap = 3, children = {
+                                UI.Label { text = "幸运转盘", fontSize = 14, fontColor = { 226, 192, 255, 255 } },
+                                UI.Label { id = "energyTimer", text = "", fontSize = 10, fontColor = { 190, 175, 215, 225 } },
                             }},
-                            UI.Button { text = "去转", width = 84, height = 40, fontSize = 13,
+                            UI.Button { text = "去转", width = 78, height = 38, fontSize = 13,
                                 backgroundColor = { 108, 72, 160, 255 }, textColor = { 250, 242, 255, 255 },
                                 borderRadius = 9, onClick = function() BuildWheel() end },
                         },
                     },
-                    UI.Label { id = "statLabel", text = "", fontSize = 11, fontColor = { 140, 122, 94, 225 } },
                 },
             },
             -- 底栏
             UI.Panel {
-                width = "100%", paddingLeft = 16, paddingRight = 16, paddingTop = 8, paddingBottom = 28,
-                flexDirection = "row", justifyContent = "space-between", alignItems = "center", gap = 10,
+                width = "100%", paddingLeft = 14, paddingRight = 14, paddingTop = 6, paddingBottom = 26,
+                flexDirection = "row", justifyContent = "space-between", alignItems = "center", gap = 7,
                 children = {
-                    UI.Button { text = "手机 · 抽卡 / 员工", width = "58%", height = 46, fontSize = 14,
+                    UI.Button { text = "手机", width = "27%", height = 44, fontSize = 13,
                         backgroundColor = { 44, 52, 68, 255 }, textColor = { 200, 220, 255, 255 },
                         borderRadius = 10, onClick = function() BuildPhone() end },
-                    UI.Button { text = "玩法", width = "34%", height = 46, fontSize = 14,
+                    UI.Button { id = "a1Btn", text = "补票 +20", width = "33%", height = 44, fontSize = 12,
+                        backgroundColor = { 44, 60, 44, 255 }, textColor = { 172, 228, 180, 255 },
+                        borderRadius = 10, onClick = function() ShowAd("A1", updateHud) end },
+                    UI.Button { text = "玩法", width = "27%", height = 44, fontSize = 13,
                         backgroundColor = C.card2, textColor = C.text, borderRadius = 10,
                         borderWidth = 1, borderColor = { 110, 88, 48, 255 },
                         onClick = function() ShowTutorial() end },
                 },
             },
-            UI.Panel { position = "absolute", bottom = 6, left = 0, right = 0,
+            UI.Panel { position = "absolute", bottom = 4, left = 0, right = 0,
                 alignItems = "center", pointerEvents = "none",
                 children = { UI.Label { id = "toast", text = "", fontSize = 11, fontColor = { 255, 220, 130, 235 } } } },
         },
@@ -1434,11 +1785,11 @@ function ShowTutorial()
                 borderWidth = 2, borderColor = C.gold,
                 children = {
                     UI.Label { text = "怎么玩", fontSize = 22, fontColor = C.goldL, textAlign = "center" },
-                    UI.Label { text = "1. 大厅选票：一张票印着面额，8-40 次中奖机会", fontSize = 13, fontColor = C.text },
-                    UI.Label { text = "2. 手指刮开银色涂层，每刮开一格就是一次判定", fontSize = 13, fontColor = C.text },
-                    UI.Label { text = "3. 对号票：刮出的号码和顶部幸运号一样就中", fontSize = 13, fontColor = C.text },
-                    UI.Label { text = "4. 找符号票：刮出目标符号就中，下面就是奖金", fontSize = 13, fontColor = C.text },
-                    UI.Label { text = "5. 全部刮开自动开奖；转盘与手机里的员工另有收益", fontSize = 13, fontColor = C.text },
+                    UI.Label { text = "1. 大厅挑档位（5-50 元），进柜台看 3 张候选票", fontSize = 12, fontColor = C.text },
+                    UI.Label { text = "2. 每张票已提前揭开 3 格真实结果——照着挑你喜欢的", fontSize = 12, fontColor = C.text },
+                    UI.Label { text = "3. 稳型中奖多、奖小；冲型奖大但常空手", fontSize = 12, fontColor = C.text },
+                    UI.Label { text = "4. 刮开银色涂层，每刮一格就是一次判定，全部刮完开奖", fontSize = 12, fontColor = C.text },
+                    UI.Label { text = "5. 每张 +4 手气，满 40 得运势券，用券必出一笔大奖", fontSize = 12, fontColor = C.text },
                     goldBtn("知道了，开始刮卡", function()
                         state_.seenTutorial = true
                         saveGame()
@@ -1473,10 +1824,13 @@ local function enterTicket(price, name)
     return false
 end
 
-function StartTicket(tk)
-    if not enterTicket(tk.price, tk.name) then return end
+--- 开始刮一张票
+--- @param prebuilt table|nil 柜台里已生成好的结果（含预揭格），选中后直接使用，保证预揭与实际一致
+function StartTicket(tk, styleIdx, prebuilt)
+    if not enterTicket(tk.price, tk.name) then return false end
+    local res = prebuilt or generateTicket(tk, styleIdx or 2, false, PEEK_CELLS)
     scratch_ = {
-        mode = "multi", result = generateTicket(tk),
+        mode = "multi", result = res,
         zones = {}, cellRects = {}, revealed = {}, revealedCount = 0,
         total = 0, foil = {}, barW = 240,
         pointerDown = false, lastX = 0, lastY = 0,
@@ -1484,6 +1838,7 @@ function StartTicket(tk)
     }
     floats_ = {}
     buildMultiScreen()
+    return true
 end
 
 -- 兼容旧入口
@@ -1556,6 +1911,11 @@ function buildMultiScreen()
     scratch_.total = cur.total
     scratch_.revealed, scratch_.revealedCount = {}, 0
     scratch_.barW = cardW - 40
+    -- 柜台预揭的格：进入时就是已刮状态（是这张票真实结果的一部分）
+    for _, pi in ipairs(cur.peeked or {}) do
+        scratch_.revealed[pi] = true
+        scratch_.revealedCount = scratch_.revealedCount + 1
+    end
 
     -- 格子控件（内容预先排好，被银色涂层盖住）
     local widgets = {}
@@ -1711,6 +2071,20 @@ function SettleScratch()
     local payout = cur.payout
     state_.totalScratched = state_.totalScratched + 1
 
+    -- 手气槽：每张固定 +4（不看广告、不看结果，无套利空间，GDD 6.1）
+    local gaugeMsg = nil
+    state_.luckGauge = (state_.luckGauge or 0) + LUCK_GAIN
+    if state_.luckGauge >= LUCK_CAP then
+        if (state_.vouchers or 0) < VOUCHER_MAX then
+            state_.vouchers = (state_.vouchers or 0) + 1
+            state_.luckGauge = 0
+            gaugeMsg = "手气槽满 · 得 1 张运势券"
+        else
+            state_.luckGauge = LUCK_CAP
+            gaugeMsg = "运势券已满 · 先用掉一张再攒"
+        end
+    end
+
     if payout > 0 then
         state_.coins = state_.coins + payout
         state_.totalWon = state_.totalWon + payout
@@ -1724,8 +2098,9 @@ function SettleScratch()
         if c.hit then table.insert(hitOnes, fmtShort(c.amount)) end
     end
 
+    local st = STYLES[cur.styleIdx or 2]
     local kids = {
-        UI.Label { text = tk.name .. " · " .. tk.yuan .. " 元 · 共 " .. cur.total .. " 次",
+        UI.Label { text = tk.name .. " · " .. tk.yuan .. " 元 · " .. st.name .. "型 · 共 " .. cur.total .. " 次",
             fontSize = 11, fontColor = C.dim },
         UI.Label { text = payout > 0 and ("＋" .. fmt(payout)) or "0",
             fontSize = payout > 0 and 34 or 28,
@@ -1737,6 +2112,14 @@ function SettleScratch()
                 or ("没有对上 · 换一张试试"),
             fontSize = 11, fontColor = { 208, 192, 158, 235 }, textAlign = "center" },
     }
+
+    -- 手气槽进度（确定性承诺：永远知道还差几张）
+    local gv = state_.luckGauge or 0
+    table.insert(kids, UI.Label {
+        text = gaugeMsg or ("手气槽 " .. gv .. "/" .. LUCK_CAP .. " · 再 "
+            .. math.ceil((LUCK_CAP - gv) / LUCK_GAIN) .. " 张有券"),
+        fontSize = 10, fontColor = gaugeMsg and { 236, 196, 240, 255 } or { 156, 140, 116, 235 },
+    })
 
     if payout > 0 then
         table.insert(kids, UI.Label { text = "奖金已到账", fontSize = 11, fontColor = C.green })
@@ -1756,8 +2139,8 @@ function SettleScratch()
         })
     end
 
-    table.insert(kids, goldBtn(payout > 0 and "收下 · 再来一张" or "再来一张", function()
-        StartTicket(tk)
+    table.insert(kids, goldBtn(payout > 0 and "收下 · 再挑一张" or "再挑一张", function()
+        BuildCounter(tk.yuan)
     end, { height = 44 }))
     table.insert(kids, UI.Button {
         text = "回大厅", width = "100%", height = 38, fontSize = 12,
