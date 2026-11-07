@@ -153,6 +153,7 @@ end
 --- 播放一次音效（多实例轮转，避免连发被切断）
 function SFX(name, gain, pitch)
     if not audioOK_ then return end
+    if state_ and state_.sfxOn == false then return end
     local pool, snd = sfxPools_[name], sfxSounds_[name]
     if not pool or not snd then return end
     pcall(function()
@@ -168,6 +169,7 @@ end
 --- 刮擦循环音：按下开、松开停
 function ScratchSound(on)
     if not audioOK_ or not scratchSrc_ then return end
+    if state_ and state_.sfxOn == false then return end
     pcall(function()
         if on and not scratchOn_ then
             scratchSrc_:Play(sfxSounds_.scratch, 0, 0.42)
@@ -349,21 +351,21 @@ local ECO = {
 -- 每一级都改变玩家看得见的东西：离线收入 / 柜台预揭 / 每日免费票 / 手气速度 / 票价折扣
 local SHOP_LEVELS = {
     { lv=1, name="街边小摊", cost=0,       offlineMul=1.0, peek=0, freeTicket=0, luckAdd=0, voucherMax=0, desc="一块木板，两沓票" },
-    { lv=2, name="巷口小店", cost=80000,   offlineMul=1.3, peek=0, freeTicket=1, luckAdd=1, voucherMax=0, desc="有了招牌和一盏灯" },
-    { lv=3, name="街面门市", cost=320000,  offlineMul=1.7, peek=1, freeTicket=1, luckAdd=1, voucherMax=0, desc="玻璃柜台，多看一眼票面" },
-    { lv=4, name="二层店铺", cost=1300000, offlineMul=2.2, peek=1, freeTicket=3, luckAdd=2, voucherMax=0, desc="楼上能坐人，老客有地方待" },
-    { lv=5, name="连锁总店", cost=5200000, offlineMul=2.8, peek=2, freeTicket=3, luckAdd=2, voucherMax=1, desc="三家分店，券能多存一张" },
-    { lv=6, name="传奇展厅", cost=20000000,offlineMul=3.5, peek=2, freeTicket=5, luckAdd=3, voucherMax=2, desc="整条街都知道这块招牌" },
+    { lv=2, name="巷口小店", cost=30000,   offlineMul=1.3, peek=0, freeTicket=1, luckAdd=1, voucherMax=0, desc="有了招牌和一盏灯" },
+    { lv=3, name="街面门市", cost=120000,  offlineMul=1.7, peek=1, freeTicket=1, luckAdd=1, voucherMax=0, desc="玻璃柜台，多看一眼票面" },
+    { lv=4, name="二层店铺", cost=450000,  offlineMul=2.2, peek=1, freeTicket=3, luckAdd=2, voucherMax=0, desc="楼上能坐人，老客有地方待" },
+    { lv=5, name="连锁总店", cost=1800000, offlineMul=2.8, peek=2, freeTicket=3, luckAdd=2, voucherMax=1, desc="三家分店，券能多存一张" },
+    { lv=6, name="传奇展厅", cost=6000000, offlineMul=3.5, peek=2, freeTicket=5, luckAdd=3, voucherMax=2, desc="整条街都知道这块招牌" },
 }
 
 -- 刮刀（v1.1 金币第二出口 · 直接改手感）
 -- 半径越大，一次划开越多格；radius 直接覆盖 ECO.brushRadius
 local KNIVES = {
     { id="wood",  name="废木片",   cost=0,       radius=26, tint={168,140,96},  desc="边缘毛糙，刮得慢" },
-    { id="plastic",name="塑料卡",  cost=30000,   radius=30, tint={150,190,210}, desc="会员卡，比木片顺手" },
-    { id="steel", name="钢尺",     cost=180000,  radius=35, tint={196,204,212}, desc="文具店买的，刮得又快又平" },
-    { id="gold",  name="鎏金刮刀", cost=900000,  radius=40, tint={240,198,96},  desc="刮痕带金边，手感极顺" },
-    { id="jade",  name="玉柄刀",   cost=4500000, radius=46, tint={150,232,196}, desc="刀过之处，箔屑如雪" },
+    { id="plastic",name="塑料卡",  cost=20000,   radius=30, tint={150,190,210}, desc="会员卡，比木片顺手" },
+    { id="steel", name="钢尺",     cost=120000,  radius=35, tint={196,204,212}, desc="文具店买的，刮得又快又平" },
+    { id="gold",  name="鎏金刮刀", cost=600000,  radius=40, tint={240,198,96},  desc="刮痕带金边，手感极顺" },
+    { id="jade",  name="玉柄刀",   cost=2500000, radius=46, tint={150,232,196}, desc="刀过之处，箔屑如雪" },
 }
 
 --- 当前店铺等级数据
@@ -688,6 +690,7 @@ function defaultState()
         knife="wood",        -- 当前刮刀
         ownedKnives={ wood=true },
         freeTicketDay=0,     -- 每日免费票领取日
+        sfxOn=true,          -- 音效开关
         ver=23,
     }
 end
@@ -752,6 +755,7 @@ function loadGame()
     if type(d.ownedKnives) ~= "table" then d.ownedKnives = { wood=true } end
     if d.ownedKnives.wood ~= true then d.ownedKnives.wood = true end
     if type(d.freeTicketDay) ~= "number" then d.freeTicketDay = 0 end
+    if d.sfxOn == nil then d.sfxOn = true end
     d.ver = 23
     state_ = d
     return true
@@ -770,7 +774,7 @@ function settleOffline()
     if coins <= 0 then return nil end
     state_.coins = state_.coins + coins
     return { coins=coins, away=away, capped = away > ECO.offlineCapHours * 3600,
-             prod=math.floor(perHour / 3600), shop=sd }
+             prod=perHour, shop=sd }
 end
 
 --- 破产兜底（GDD 8.x：金币<5 且 票=0 且 电=0）
@@ -1161,7 +1165,7 @@ function ShowOfflinePanel(bill)
                     UI.Label { text = string.format("%s · 离开 %d 小时 %d 分 · 约 %d 币/小时",
                         bill.shop and bill.shop.name or "小店",
                         math.floor(bill.away/3600), math.floor(bill.away%3600/60),
-                        (bill.shop and bill.shop.lv or 1) * 600), fontSize = 12, fontColor = { 200,185,150,230 } },
+                        bill.prod or 600), fontSize = 12, fontColor = { 200,185,150,230 } },
                     UI.Label { text = "升级店铺 · 打烊收入更高", fontSize = 10, fontColor = { 168,150,116,225 } },
                     UI.Button { text = "📺 看广告 多领一份", width = "70%",
                         onClick = function(self)
@@ -1967,6 +1971,7 @@ function BuildLobby()
                         justifyContent="space-between", alignItems="center",
                         backgroundColor = { 48, 38, 24, 255 }, borderRadius=12,
                         borderWidth=1, borderColor={ 128, 96, 48, 255 },
+                        pointerEvents = "auto",
                         onClick = function() BuildShop() end,
                         children = {
                             UI.Panel { gap=2, children = {
@@ -1998,6 +2003,7 @@ function BuildLobby()
                             justifyContent="space-between", alignItems="center",
                             backgroundColor={54,44,22,255}, borderRadius=9,
                             borderWidth=1, borderColor={196,154,68,255},
+                            pointerEvents="auto",
                             onClick=function()
                                 if state_.freeTicketDay == todayIndex() then return end
                                 state_.freeTicketDay = todayIndex()
@@ -2314,6 +2320,18 @@ function ShowTutorial()
                     UI.Label { text = "3. 稳型中奖多、奖小；冲型奖大但常空手", fontSize = 12, fontColor = C.text },
                     UI.Label { text = "4. 刮开银色涂层，每刮一格就是一次判定，全部刮完开奖", fontSize = 12, fontColor = C.text },
                     UI.Label { text = "5. 每张 +4 手气，满 40 得运势券，用券必出一笔大奖", fontSize = 12, fontColor = C.text },
+                    UI.Label { text = "6. 金币往上只有两个去处：升级店铺、换更好的刮刀", fontSize = 12, fontColor = C.text },
+                    UI.Button {
+                        text = "音效：" .. ((state_.sfxOn ~= false) and "开" or "关"),
+                        height = 34, width = "100%", fontSize = 12,
+                        backgroundColor = { 50, 44, 36, 255 }, textColor = C.dim, borderRadius = 8,
+                        onClick = function(self)
+                            state_.sfxOn = not (state_.sfxOn ~= false)
+                            saveGame()
+                            self:SetText("音效：" .. (state_.sfxOn and "开" or "关"))
+                            if state_.sfxOn then SFX("click", 0.6) end
+                        end,
+                    },
                     goldBtn("知道了，开始刮卡", function()
                         state_.seenTutorial = true
                         saveGame()
@@ -2653,18 +2671,32 @@ function SettleScratch()
     end
 
     local st = STYLES[cur.styleIdx or 2]
+    local ink      = { 62, 50, 36, 255 }
+    local inkSub   = { 112, 96, 74, 255 }
+    local inkFaint = { 156, 140, 116, 255 }
+    local inkRed   = { 172, 42, 30, 255 }
+    local inkGreen = { 52, 108, 62, 255 }
+    local dashed   = "· · · · · · · · · · · · · · · · · ·"
+
+    local stamp = "——"
+    pcall(function() stamp = os.date("%Y-%m-%d  %H:%M") end)
+
     local kids = {
-        UI.Label { text = tk.name .. " · " .. tk.yuan .. " 元 · " .. st.name .. "型 · 共 " .. cur.total .. " 次",
-            fontSize = 11, fontColor = C.dim },
+        UI.Label { text = "好 运 游 戏 厅", fontSize = 10, fontColor = inkFaint, textAlign = "center" },
+        UI.Label { text = "兑 奖 凭 证", fontSize = 9, fontColor = { 176, 160, 132, 255 }, textAlign = "center" },
+        UI.Label { text = dashed, fontSize = 8, fontColor = { 196, 182, 156, 255 }, textAlign = "center" },
+        UI.Label { text = tk.name .. " · " .. tk.yuan .. " 元 · " .. st.name .. "型", fontSize = 11,
+            fontColor = ink, textAlign = "center" },
+        UI.Label { text = "共 " .. cur.total .. " 次机会", fontSize = 9, fontColor = inkFaint, textAlign = "center" },
         UI.Label { text = payout > 0 and ("＋" .. fmt(payout)) or "0",
-            fontSize = payout > 0 and 34 or 28,
-            fontColor = payout > 0 and C.goldL or { 170, 158, 136, 255 } },
-        UI.Label { text = payout > 0 and "金币" or "这张没中", fontSize = 12,
-            fontColor = payout > 0 and C.gold or { 150, 140, 124, 255 } },
+            fontSize = payout > 0 and 38 or 30,
+            fontColor = payout > 0 and inkRed or { 150, 140, 124, 255 }, textAlign = "center" },
+        UI.Label { text = payout > 0 and "金币已入账" or "这张没中",
+            fontSize = 11, fontColor = payout > 0 and inkGreen or inkFaint, textAlign = "center" },
         UI.Label { text = #hitOnes > 0
                 and ("中奖 " .. #hitOnes .. " 格：" .. table.concat(hitOnes, " · "))
-                or ("没有对上 · 换一张试试"),
-            fontSize = 11, fontColor = { 208, 192, 158, 235 }, textAlign = "center" },
+                or "一格都没对上",
+            fontSize = 10, fontColor = inkSub, textAlign = "center" },
     }
 
     -- 手气槽进度（确定性承诺：永远知道还差几张）
@@ -2672,17 +2704,23 @@ function SettleScratch()
     table.insert(kids, UI.Label {
         text = gaugeMsg or ("手气槽 " .. gv .. "/" .. LUCK_CAP .. "（本张 +" .. luckGain .. "）· 再 "
             .. math.ceil((LUCK_CAP - gv) / math.max(1, luckGain)) .. " 张有券"),
-        fontSize = 10, fontColor = gaugeMsg and { 236, 196, 240, 255 } or { 156, 140, 116, 235 },
+        fontSize = 9, fontColor = gaugeMsg and { 132, 88, 148, 255 } or inkFaint, textAlign = "center",
     })
 
+    table.insert(kids, UI.Label { text = dashed, fontSize = 8,
+        fontColor = { 196, 182, 156, 255 }, textAlign = "center" })
+
+    table.insert(kids, goldBtn(payout > 0 and "收下 · 再挑一张" or "再挑一张", function()
+        BuildCounter(tk.yuan)
+    end, { height = 44 }))
+
     if payout > 0 then
-        table.insert(kids, UI.Label { text = "奖金已到账", fontSize = 11, fontColor = C.green })
         table.insert(kids, UI.Button {
             id = "doubleBtn",
             text = "看广告 · 再领 " .. fmt(payout) .. " 币",
-            width = "100%", height = 44, fontSize = 13,
-            backgroundColor = { 62, 92, 58, 255 }, textColor = { 200, 246, 200, 255 },
-            borderRadius = 10, borderWidth = 1, borderColor = { 110, 160, 100, 255 },
+            width = "100%", height = 38, fontSize = 12,
+            backgroundColor = { 86, 122, 78, 255 }, textColor = { 240, 252, 236, 255 },
+            borderRadius = 9, borderWidth = 1, borderColor = { 112, 152, 100, 255 },
             onClick = function(self)
                 ShowAd("A2", function()
                     self:SetText("已再领一份")
@@ -2693,14 +2731,13 @@ function SettleScratch()
         })
     end
 
-    table.insert(kids, goldBtn(payout > 0 and "收下 · 再挑一张" or "再挑一张", function()
-        BuildCounter(tk.yuan)
-    end, { height = 44 }))
     table.insert(kids, UI.Button {
-        text = "回大厅", width = "100%", height = 38, fontSize = 12,
-        backgroundColor = { 0, 0, 0, 0 }, textColor = C.dim, borderRadius = 8,
+        text = "回大厅", width = "100%", height = 34, fontSize = 11,
+        backgroundColor = { 0, 0, 0, 0 }, textColor = inkSub, borderRadius = 8,
         onClick = function() BuildLobby() end,
     })
+    table.insert(kids, UI.Label { text = stamp .. "    谢谢惠顾", fontSize = 8,
+        fontColor = { 180, 166, 142, 255 }, textAlign = "center" })
 
     local banner = UI.Panel {
         id = "resultBanner",
@@ -2709,10 +2746,11 @@ function SettleScratch()
         justifyContent = "center", alignItems = "center", padding = 20,
         children = {
             UI.Panel {
-                width = "100%", maxWidth = 340, padding = 20, gap = 8, alignItems = "stretch",
-                backgroundColor = payout > 0 and { 52, 40, 18, 255 } or { 38, 33, 27, 255 },
-                borderRadius = 18, borderWidth = 2,
-                borderColor = payout > 0 and C.gold or { 104, 94, 80, 220 },
+                width = "100%", maxWidth = 340, paddingTop = 18, paddingBottom = 14,
+                paddingLeft = 18, paddingRight = 18, gap = 6, alignItems = "stretch",
+                backgroundColor = { 248, 242, 226, 255 },
+                borderRadius = 14, borderWidth = 1,
+                borderColor = payout > 0 and { 196, 158, 78, 255 } or { 196, 184, 160, 255 },
                 children = kids,
             },
         },
