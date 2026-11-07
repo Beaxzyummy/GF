@@ -633,6 +633,8 @@ function defaultState()
         luckGauge=0,         -- 集点卡 0..LUCK_CAP，每买一张 +1
         vouchers=0,          -- 赠票 0..VOUCHER_MAX（买十送一）
         books={},            -- 整本状态：tkId → { serial, sold, hits, bigAt, bigHit }
+        bestWin=0,           -- 历史最大单张中奖
+        album={},            -- 票根册：tkId → { count, best }
         counterTier=5,       -- 柜台当前档位（元）
         lastReroll=0,        -- 换一批冷却
         shopLv=1,            -- 店铺等级 1..6（金币主出口）
@@ -1647,6 +1649,8 @@ local function bookFor(tk)
         }
         state_.books[tk.id] = b
     end
+    if type(b.serial) ~= "string" then b.serial = bookSerial(tk.yuan) end
+    if type(b.bigAt) ~= "number" then b.bigAt = math.floor(rng() * BOOK_SIZE) + 1 end
     return b
 end
 
@@ -1672,10 +1676,9 @@ local function bookCard(tk)
     local skin = SKIN[tk.skin] or SKIN.green
     local styleColor = ({ {112,196,148,255}, {212,175,55,255}, {228,120,90,255} })[tk.style or 2]
     local sold = tonumber(b.sold) or 0
-    local barW = 96
 
     return UI.Panel {
-        width = "100%", padding = 9, gap = 8,
+        width = "100%", padding = 12, gap = 10,
         flexDirection = "row", justifyContent = "space-between", alignItems = "center",
         backgroundColor = { 42, 34, 24, 255 }, borderRadius = 12,
         borderWidth = 1, borderColor = { 96, 80, 52, 255 },
@@ -1699,15 +1702,15 @@ local function bookCard(tk)
             UI.Panel { gap = 4, flex = 1, paddingRight = 4, children = {
                 UI.Label { text = b.serial .. " · 第 " .. (sold + 1) .. "/" .. BOOK_SIZE .. " 张",
                     fontSize = 10, fontColor = { 196, 178, 146, 255 } },
-                UI.Panel { width = barW, height = 5, backgroundColor = { 28, 22, 18, 255 }, borderRadius = 3,
-                    children = { UI.Panel { width = math.max(3, math.floor(barW * math.min(1, sold / BOOK_SIZE))),
+                UI.Panel { width = "100%", height = 5, backgroundColor = { 28, 22, 18, 255 }, borderRadius = 3,
+                    children = { UI.Panel { width = string.format("%.1f%%", math.max(3, math.min(100, sold / BOOK_SIZE * 100))),
                         height = 5, backgroundColor = { 196, 154, 68, 255 }, borderRadius = 3 } } },
                 UI.Label { text = "本内已出 " .. (tonumber(b.hits) or 0) .. " 笔 · 剩 " .. (BOOK_SIZE - sold) .. " 张",
                     fontSize = 9, fontColor = { 196, 176, 138, 235 } },
             }},
             -- 右：撕一张
             UI.Button {
-                text = "撕一张\n" .. fmt(tk.price), width = 76, height = 50, fontSize = 11,
+                text = "撕一张 " .. fmtShort(tk.price), width = 84, height = 48, fontSize = 10.5,
                 backgroundColor = C.gold, textColor = { 38, 28, 10, 255 }, borderRadius = 9,
                 onClick = function() buyTicket(tk) end,
             },
@@ -1750,7 +1753,19 @@ function BuildCounter(tier)
             -- 集点卡
             luckPanel(),
             -- 各款票
-            UI.Panel { width = "100%", gap = 8, children = cards },
+            UI.Panel { width = "100%", gap = 9, children = cards },
+            -- 本店战绩（真实店会把中奖票根贴在墙上）
+            UI.Panel { width = "100%", padding = 12, gap = 4,
+                backgroundColor = { 36, 30, 24, 255 }, borderRadius = 11,
+                borderWidth = 1, borderColor = { 72, 60, 40, 255 },
+                children = {
+                    UI.Label { text = "本 店 战 绩", fontSize = 10, fontColor = { 176, 152, 108, 255 } },
+                    UI.Label { text = "已刮 " .. fmt(state_.totalScratched or 0) .. " 张 · 累计中奖 "
+                            .. fmt(state_.totalWon or 0) .. " 币",
+                        fontSize = 11, fontColor = { 220, 200, 164, 255 } },
+                    UI.Label { text = "最大单张 " .. fmt(state_.bestWin or 0) .. " 币",
+                        fontSize = 11, fontColor = C.gold },
+                }},
             -- 底部说明
             UI.Panel { width = "100%", alignItems = "center", paddingTop = 2, children = {
                 UI.Label { text = "票面金额、奖级、返奖率均按真实彩票公示 · 本内已出只公布笔数",
@@ -1948,13 +1963,17 @@ function BuildLobby()
                 width = "100%", paddingLeft = 14, paddingRight = 14, paddingTop = 6, paddingBottom = 26,
                 flexDirection = "row", justifyContent = "space-between", alignItems = "center", gap = 7,
                 children = {
-                    UI.Button { text = "手机", width = "27%", height = 44, fontSize = 13,
+                    UI.Button { text = "手机", width = "22%", height = 44, fontSize = 12,
                         backgroundColor = { 44, 52, 68, 255 }, textColor = { 200, 220, 255, 255 },
                         borderRadius = 10, onClick = function() BuildPhone() end },
-                    UI.Button { id = "a1Btn", text = "补票 +20", width = "33%", height = 44, fontSize = 12,
+                    UI.Button { text = "票根册", width = "23%", height = 44, fontSize = 12,
+                        backgroundColor = { 54, 42, 30, 255 }, textColor = { 232, 206, 160, 255 },
+                        borderRadius = 10, borderWidth = 1, borderColor = { 132, 104, 56, 255 },
+                        onClick = function() BuildAlbum() end },
+                    UI.Button { id = "a1Btn", text = "补票+20", width = "25%", height = 44, fontSize = 11,
                         backgroundColor = { 44, 60, 44, 255 }, textColor = { 172, 228, 180, 255 },
                         borderRadius = 10, onClick = function() ShowAd("A1", updateHud) end },
-                    UI.Button { text = "玩法", width = "27%", height = 44, fontSize = 13,
+                    UI.Button { text = "玩法", width = "22%", height = 44, fontSize = 12,
                         backgroundColor = C.card2, textColor = C.text, borderRadius = 10,
                         borderWidth = 1, borderColor = { 110, 88, 48, 255 },
                         onClick = function() ShowTutorial() end },
@@ -2562,6 +2581,13 @@ function SettleScratch()
         end
     end
 
+    -- 票根册：每款票刮过就留一张票根
+    state_.album = state_.album or {}
+    local ar = state_.album[tk.id]
+    if type(ar) ~= "table" then ar = { count = 0, best = 0 }; state_.album[tk.id] = ar end
+    ar.count = (tonumber(ar.count) or 0) + 1
+    if payout > (tonumber(ar.best) or 0) then ar.best = payout end
+
     -- 本内战绩：只累加「出了几笔奖」，不公布金额（避免玩家精确推算剩余期望）
     local b = scratch_.book
     if b then
@@ -2571,6 +2597,7 @@ function SettleScratch()
     if payout > 0 then
         state_.coins = state_.coins + payout
         state_.totalWon = state_.totalWon + payout
+        if payout > (state_.bestWin or 0) then state_.bestWin = payout end
         local bigHit = payout >= tk.price * 8
         spawnParticles(UI.GetWidth() / 2, UI.GetHeight() * 0.42, bigHit and 240 or 70, bigHit)
         if bigHit then flashAlpha_ = 1.0 end
@@ -2793,6 +2820,78 @@ end
 -- ============================================================================
 -- 12. 手机系统：抽卡 + 员工
 -- ============================================================================
+
+--- 票根册：每款票刮过一张就收录，记录张数与最高单张
+function BuildAlbum()
+    state_.screen = "album"
+    local topPad = math.floor(UI.GetHeight() * 0.105)
+    local album = state_.album or {}
+    local got = 0
+    for _, tk in ipairs(TICKET_DEFS) do if type(album[tk.id]) == "table" then got = got + 1 end end
+
+    local rows = {}
+    for i = 1, #TICKET_DEFS, 3 do
+        local cells = {}
+        for j = i, math.min(i + 2, #TICKET_DEFS) do
+            local tk = TICKET_DEFS[j]
+            local rec = album[tk.id]
+            local skin = SKIN[tk.skin] or SKIN.green
+            local styleColor = ({ {112,196,148,255}, {212,175,55,255}, {228,120,90,255} })[tk.style or 2]
+            local kids
+            if type(rec) == "table" then
+                kids = {
+                    UI.Panel { width = "100%", height = 4, backgroundColor = styleColor, borderRadius = 2 },
+                    UI.Label { text = tk.name, fontSize = 13,
+                        fontColor = { skin.paper[1], skin.paper[2], skin.paper[3], 255 } },
+                    UI.Label { text = tk.yuan .. " 元 · 刮过 " .. (tonumber(rec.count) or 0) .. " 张",
+                        fontSize = 8.5, fontColor = { 176, 160, 130, 235 } },
+                    UI.Label { text = "最高 " .. fmtShort(rec.best or 0),
+                        fontSize = 10, fontColor = C.gold },
+                }
+            else
+                kids = {
+                    UI.Panel { width = "100%", height = 4, backgroundColor = { 60, 54, 44, 255 }, borderRadius = 2 },
+                    UI.Label { text = "？ ？", fontSize = 13, fontColor = { 110, 100, 84, 255 } },
+                    UI.Label { text = tk.yuan .. " 元 · 未收集", fontSize = 8.5, fontColor = { 110, 100, 84, 235 } },
+                    UI.Label { text = "刮一张即收录", fontSize = 8, fontColor = { 96, 88, 74, 235 } },
+                }
+            end
+            cells[#cells + 1] = UI.Panel {
+                width = "31.5%", padding = 8, gap = 3,
+                backgroundColor = type(rec) == "table" and { 42, 36, 26, 255 } or { 30, 27, 23, 255 },
+                borderRadius = 10, borderWidth = 1,
+                borderColor = type(rec) == "table" and { 108, 88, 50, 255 } or { 52, 46, 38, 255 },
+                children = kids,
+            }
+        end
+        rows[#rows + 1] = UI.Panel { width = "100%", flexDirection = "row", gap = 7, children = cells }
+    end
+
+    uiRoot_ = UI.Panel {
+        width = "100%", height = "100%", backgroundColor = C.bg,
+        paddingTop = topPad, paddingBottom = 18, gap = 9,
+        children = {
+            UI.Panel { width = "100%", paddingLeft = 14, paddingRight = 14, flexDirection = "row",
+                justifyContent = "space-between", alignItems = "center", children = {
+                UI.Button { text = "←", width = 40, height = 34, fontSize = 15,
+                    backgroundColor = C.card2, textColor = C.text, borderRadius = 8,
+                    onClick = function() BuildLobby() end },
+                UI.Panel { alignItems = "flex-end", gap = 2, children = {
+                    UI.Label { text = "票 根 册", fontSize = 16, fontColor = C.goldL },
+                    UI.Label { text = "已收集 " .. got .. "/" .. #TICKET_DEFS .. " 款 · 刮过就留一张",
+                        fontSize = 10, fontColor = C.dim },
+                }},
+            }},
+            UI.ScrollView { flexGrow = 1, flexBasis = 0, scrollY = true, width = "100%",
+                showScrollbar = true,
+                children = { UI.Panel { width = "100%", paddingLeft = 14, paddingRight = 14,
+                    paddingBottom = 10, gap = 7, children = rows } },
+            },
+        },
+    }
+    UI.SetRoot(uiRoot_)
+    updateHud()
+end
 
 function BuildPhone()
     state_.screen = "phone"
