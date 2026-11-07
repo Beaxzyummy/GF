@@ -96,6 +96,90 @@ local LUCK_GAIN      = 4     -- 每刮完一张 +4
 local LUCK_CAP       = 40    -- 满 40 出一张运势券
 local VOUCHER_MAX    = 2     -- 券上限，满了槽不再累积
 
+-- ============================================================================
+-- 0.9 音频（v1.1）：全部 pcall 包裹，任何一步失败静默降级，绝不阻塞游戏
+-- 资源位于 assets/audio，运行路径 audio/xxx.wav
+-- ============================================================================
+local SFX_FILES = {
+    tick    = "audio/tick.wav",
+    win     = "audio/win.wav",
+    bigwin  = "audio/bigwin.wav",
+    lose    = "audio/lose.wav",
+    click   = "audio/click.wav",
+    buy     = "audio/buy.wav",
+    wheel   = "audio/wheel.wav",
+    voucher = "audio/voucher.wav",
+    cash    = "audio/cash.wav",
+    scratch = "audio/scratch_loop.wav",
+}
+
+local sfxSounds_ = {}
+local sfxPools_  = {}   -- name → { src... , i }
+local scratchSrc_ = nil
+local scratchOn_ = false
+local audioOK_ = false
+
+function InitAudio()
+    local ok, err = pcall(function()
+        local scene = Scene()
+        local node = scene:CreateChild("Sfx")
+        local lst = scene:CreateChild("Listener")
+        lst:CreateComponent("SoundListener")
+        for name, path in pairs(SFX_FILES) do
+            local snd = cache:GetResource("Sound", path)
+            if snd then
+                sfxSounds_[name] = snd
+                local pool = { i = 1 }
+                for k = 1, 4 do
+                    local src = node:CreateComponent("SoundSource")
+                    if src then
+                        src.soundType = "Effect"
+                        pool[#pool + 1] = src
+                    end
+                end
+                if #pool > 0 then sfxPools_[name] = pool end
+                if name == "scratch" then snd:SetLooped(true) end
+            end
+        end
+        if sfxPools_.scratch and #sfxPools_.scratch > 0 then
+            scratchSrc_ = sfxPools_.scratch[1]
+        end
+        audioOK_ = true
+    end)
+    if not ok then print("[audio] 初始化失败，静音运行: " .. tostring(err)) end
+    return audioOK_
+end
+
+--- 播放一次音效（多实例轮转，避免连发被切断）
+function SFX(name, gain, pitch)
+    if not audioOK_ then return end
+    local pool, snd = sfxPools_[name], sfxSounds_[name]
+    if not pool or not snd then return end
+    pcall(function()
+        local src = pool[pool.i]
+        pool.i = pool.i % #pool + 1
+        if not src then return end
+        local f = 0
+        if pitch and pitch ~= 1 then f = snd:GetFrequency() * pitch end
+        src:Play(snd, f, gain or 0.7)
+    end)
+end
+
+--- 刮擦循环音：按下开、松开停
+function ScratchSound(on)
+    if not audioOK_ or not scratchSrc_ then return end
+    pcall(function()
+        if on and not scratchOn_ then
+            scratchSrc_:Play(sfxSounds_.scratch, 0, 0.42)
+            scratchOn_ = true
+        elseif not on and scratchOn_ then
+            scratchSrc_:Stop()
+            scratchOn_ = false
+        end
+    end)
+end
+
+
 --- 票型：稳 / 平 / 冲（GDD 5.3）。同价、同面额、同 RTP，只改「命中格数 K」与「倍数」的分布形状。
 --- 玩家看到的差别只有一条：稳型中奖率高但奖小，冲型中奖率低但一局能很大。
 local STYLES = {
@@ -248,6 +332,7 @@ local STAFF_BY_ID = {}
 for _, s in ipairs(STAFF_CATALOG) do STAFF_BY_ID[s.id] = s end
 
 -- 经济参数（data/economy.csv）
+-- v1.1 重构：金币必须稀缺。任何「按秒给钱」的机制一律不进游戏。
 local ECO = {
     ticketRecoverSec = 30,  ticketCap = 20,
     energyRecoverSec = 300, energyCap = 30,
@@ -255,8 +340,48 @@ local ECO = {
     upgradeRatio = 1.55,
     brushRadius = 30, revealThreshold = 1.0,
     gridCols = 18, gridRows = 18,
-    bankruptcyTickets = 20, bankruptcyCoins = 20000, bankruptcyDailyCap = 3,
+    bankruptcyTickets = 3, bankruptcyCoins = 3000, bankruptcyDailyCap = 3,
+    -- 打烊散客：离线上限按「店铺等级 × 600 币/小时 × 等级倍率」，最高 8h 约 1.68 万
+    offlineBasePerHour = 600,
 }
+
+-- 店铺等级（v1.1 金币主出口 · 目标感来源）
+-- 每一级都改变玩家看得见的东西：离线收入 / 柜台预揭 / 每日免费票 / 手气速度 / 票价折扣
+local SHOP_LEVELS = {
+    { lv=1, name="街边小摊", cost=0,       offlineMul=1.0, peek=0, freeTicket=0, luckAdd=0, voucherMax=0, desc="一块木板，两沓票" },
+    { lv=2, name="巷口小店", cost=80000,   offlineMul=1.3, peek=0, freeTicket=1, luckAdd=1, voucherMax=0, desc="有了招牌和一盏灯" },
+    { lv=3, name="街面门市", cost=320000,  offlineMul=1.7, peek=1, freeTicket=1, luckAdd=1, voucherMax=0, desc="玻璃柜台，多看一眼票面" },
+    { lv=4, name="二层店铺", cost=1300000, offlineMul=2.2, peek=1, freeTicket=3, luckAdd=2, voucherMax=0, desc="楼上能坐人，老客有地方待" },
+    { lv=5, name="连锁总店", cost=5200000, offlineMul=2.8, peek=2, freeTicket=3, luckAdd=2, voucherMax=1, desc="三家分店，券能多存一张" },
+    { lv=6, name="传奇展厅", cost=20000000,offlineMul=3.5, peek=2, freeTicket=5, luckAdd=3, voucherMax=2, desc="整条街都知道这块招牌" },
+}
+
+-- 刮刀（v1.1 金币第二出口 · 直接改手感）
+-- 半径越大，一次划开越多格；radius 直接覆盖 ECO.brushRadius
+local KNIVES = {
+    { id="wood",  name="废木片",   cost=0,       radius=26, tint={168,140,96},  desc="边缘毛糙，刮得慢" },
+    { id="plastic",name="塑料卡",  cost=30000,   radius=30, tint={150,190,210}, desc="会员卡，比木片顺手" },
+    { id="steel", name="钢尺",     cost=180000,  radius=35, tint={196,204,212}, desc="文具店买的，刮得又快又平" },
+    { id="gold",  name="鎏金刮刀", cost=900000,  radius=40, tint={240,198,96},  desc="刮痕带金边，手感极顺" },
+    { id="jade",  name="玉柄刀",   cost=4500000, radius=46, tint={150,232,196}, desc="刀过之处，箔屑如雪" },
+}
+
+--- 当前店铺等级数据
+local function shopData()
+    local lv = math.max(1, math.min(#SHOP_LEVELS, state_.shopLv or 1))
+    return SHOP_LEVELS[lv]
+end
+
+--- 当前刮刀数据
+local function knifeData()
+    for _, k in ipairs(KNIVES) do
+        if k.id == (state_.knife or "wood") then return k end
+    end
+    return KNIVES[1]
+end
+
+--- 运势券上限（店铺可扩容）
+function voucherMax() return VOUCHER_MAX + (shopData().voucherMax or 0) end
 
 -- ============================================================================
 -- 1.5 广告系统（AD_MODE 编译期常量，规范 1.5.2：严禁远程开关）
@@ -518,17 +643,27 @@ local function staffUpgradeCost(rec)
     return math.floor(STAFF_BASE[rec.rarity].upBase * ((ECO.upgradeRatio)^(rec.level - 1)))
 end
 
-local function totalProduction()
-    local sum, hasUR = 0, false
+--- 单名店员的手气贡献
+local function staffOneBonus(rec)
+    return 1 + math.floor(((rec.level or 1) - 1) / 5)
+end
+
+--- 店员手艺（v1.1）：店员不再产币，改为提升手气获取
+--- 每名已部署店员每张票额外 +1 手气；每 5 级再 +1；大橘 UR 全局 ×1.5
+local function staffLuckBonus()
+    local n, hasUR = 0, false
     for _, rec in pairs(state_.owned) do
         if type(rec) == "table" and rec.deployed then
-            sum = sum + staffProduction(rec)
+            n = n + staffOneBonus(rec)
             if rec.id == "ur_daju" then hasUR = true end
         end
     end
-    if hasUR then sum = math.floor(sum * 1.5) end
-    return sum
+    if hasUR then n = math.floor(n * 1.5) end
+    return n
 end
+
+--- 兼容旧调用：产出恒为 0（v1.1 起游戏里不存在「按秒给钱」）
+local function totalProduction() return 0 end
 
 -- ============================================================================
 -- 3. 状态 + 存档
@@ -536,7 +671,7 @@ end
 
 function defaultState()
     return {
-        coins=2000, diamonds=160, tickets=20, energy=30, fragments=0,
+        coins=3000, diamonds=60, tickets=3, energy=30, fragments=0,
         ticketRemainMs=0, energyRemainMs=0,
         totalScratched=0, totalWon=0, spinsToday=0,
         bankruptcyDay=0, bankruptcyCount=0,
@@ -549,7 +684,11 @@ function defaultState()
         vouchers=0,          -- 运势券 0..VOUCHER_MAX
         counterTier=5,       -- 柜台当前档位（元）
         lastReroll=0,        -- 换一批冷却
-        ver=22,
+        shopLv=1,            -- 店铺等级 1..6（金币主出口）
+        knife="wood",        -- 当前刮刀
+        ownedKnives={ wood=true },
+        freeTicketDay=0,     -- 每日免费票领取日
+        ver=23,
     }
 end
 
@@ -607,22 +746,31 @@ function loadGame()
         if type(d.vouchers) ~= "number" then d.vouchers = 0 end
         if type(d.counterTier) ~= "number" then d.counterTier = 5 end
     end
-    d.ver = 22
+    -- v2.3 经济重构：店铺等级 / 刮刀。老存档的巨额金币留着 —— 正好用来升级店铺
+    if type(d.shopLv) ~= "number" then d.shopLv = 1 end
+    if type(d.knife) ~= "string" then d.knife = "wood" end
+    if type(d.ownedKnives) ~= "table" then d.ownedKnives = { wood=true } end
+    if d.ownedKnives.wood ~= true then d.ownedKnives.wood = true end
+    if type(d.freeTicketDay) ~= "number" then d.freeTicketDay = 0 end
+    d.ver = 23
     state_ = d
     return true
 end
 
---- 离线结算（8h 封顶；返回账单或 nil）
+--- 离线结算（打烊散客：店铺等级 × 基础 × 倍率，8h 封顶）
+--- v1.1：不再是「员工产出 × 秒数」，那条公式会把金币变成废纸
 function settleOffline()
     local now = os.time()
     local away = now - (state_.lastSeen or now)
-    if away < 60 then return nil end
-    local prod = totalProduction()
-    if prod <= 0 then return nil end
+    if away < 300 then return nil end
+    local sd = shopData()
     local cappedSec = math.min(away, ECO.offlineCapHours * 3600)
-    local coins = math.floor(cappedSec * prod)
+    local perHour = math.floor(ECO.offlineBasePerHour * sd.offlineMul * sd.lv)
+    local coins = math.floor(cappedSec / 3600 * perHour)
+    if coins <= 0 then return nil end
     state_.coins = state_.coins + coins
-    return { coins=coins, away=away, capped = away > ECO.offlineCapHours * 3600, prod=prod }
+    return { coins=coins, away=away, capped = away > ECO.offlineCapHours * 3600,
+             prod=math.floor(perHour / 3600), shop=sd }
 end
 
 --- 破产兜底（GDD 8.x：金币<5 且 票=0 且 电=0）
@@ -947,6 +1095,7 @@ function StartInner()
         scale = UI.Scale.DEFAULT,
     })
     nvgCtx_ = UI.GetNVGContext()
+    InitAudio()
     SubscribeToEvent("Update", "HandleUpdate")
     SubscribeToEvent("TouchBegin", "HandleTouchBegin")
     SubscribeToEvent("TouchMove", "HandleTouchMove")
@@ -956,6 +1105,7 @@ function StartInner()
     UI.SetInspectorRenderHook(function(nvg)
         if not nvg then return end
         pcall(function()
+            if state_.screen == "lobby" then DrawLobbyAmbience(nvg) end
             if state_.screen == "scratch" then
                 if not scratch_.settled then DrawFoil(nvg) end
                 if (scratch_.hitFlash or 0) > 0.01 then
@@ -1006,9 +1156,13 @@ function ShowOfflinePanel(bill)
                 backgroundColor = { 60, 45, 15, 250 }, borderRadius = 16,
                 borderWidth = 2, borderColor = { 255, 215, 0, 220 },
                 children = {
-                    UI.Label { text = "🌙 你不在的时候", fontSize = 20, fontColor = { 245,240,230,255 } },
-                    UI.Label { text = "店里赚了 " .. fmt(bill.coins) .. " 金币", fontSize = 24, fontColor = { 255,215,0,255 } },
-                    UI.Label { text = string.format("离线 %d 小时 %d 分 · 产出 %d/秒", math.floor(bill.away/3600), math.floor(bill.away%3600/60), bill.prod), fontSize = 13, fontColor = { 200,185,150,230 } },
+                    UI.Label { text = "🌙 打烊期间", fontSize = 20, fontColor = { 245,240,230,255 } },
+                    UI.Label { text = "散客带走 " .. fmt(bill.coins) .. " 币的票", fontSize = 22, fontColor = { 255,215,0,255 } },
+                    UI.Label { text = string.format("%s · 离开 %d 小时 %d 分 · 约 %d 币/小时",
+                        bill.shop and bill.shop.name or "小店",
+                        math.floor(bill.away/3600), math.floor(bill.away%3600/60),
+                        (bill.shop and bill.shop.lv or 1) * 600), fontSize = 12, fontColor = { 200,185,150,230 } },
+                    UI.Label { text = "升级店铺 · 打烊收入更高", fontSize = 10, fontColor = { 168,150,116,225 } },
                     UI.Button { text = "📺 看广告 多领一份", width = "70%",
                         onClick = function(self)
                             ShowAd("A3", function()
@@ -1118,6 +1272,12 @@ function HandleUpdate(eventType, eventData)
         local t = math.min(1, wheelAnim_.elapsed / WHEEL_SPIN_SEC)
         local eased = 1 - ((1 - t)^(4))
         wheelAnim_.angle = wheelAnim_.startAngle + (wheelAnim_.targetAngle - wheelAnim_.startAngle) * eased
+        -- 指针拨片音：越转越慢
+        wheelTickAcc_ = (wheelTickAcc_ or 0) + dtMs
+        if wheelTickAcc_ >= 55 + 320 * t then
+            wheelTickAcc_ = 0
+            SFX("wheel", 0.30, 1.0 + (t > 0.7 and -0.05 or 0))
+        end
         if t >= 1 then wheelAnim_.spinning = false; SettleWheel() end
     end
 end
@@ -1155,28 +1315,42 @@ local function updateScratchProgress()
     end
 end
 
---- 刮开落在 (lx,ly) 下的格子；单格揭晓即一次判定
+--- 刮开落在 (lx,ly) 下的格子；渐进擦除，擦满才揭示（v1.1 真实感）
 local function scratchAt(lx, ly)
     local changed = false
+    local radius = (knifeData().radius or ECO.brushRadius)
+    local speed = radius / 26      -- 刀越大，单次擦拭越狠
     for i = 1, scratch_.total do
         if not scratch_.revealed[i] then
             local r = scratch_.cellRects[i]
-            if lx >= r.x - 2 and lx <= r.x + r.w + 2 and ly >= r.y - 2 and ly <= r.y + r.h + 2 then
-                scratch_.revealed[i] = true
-                scratch_.revealedCount = scratch_.revealedCount + 1
-                local c = scratch_.result.cells[i]
-                local cx, cy = r.x + r.w / 2, r.y + r.h / 2
-                if c.hit then
-                    local big = c.mult >= 10
-                    spawnParticles(cx, cy, big and 110 or 24, big)
-                    if big then flashAlpha_ = math.max(flashAlpha_ or 0, 0.75) end
-                    addFloat(cx, cy - r.h * 0.2, "+" .. fmtShort(c.amount),
-                        big and { 255, 226, 120 } or { 255, 210, 130 })
-                    scratch_.hitFlash = math.min(1.0, (scratch_.hitFlash or 0) + (big and 0.6 or 0.22))
-                else
-                    addFloat(cx, cy - r.h * 0.2, "没中", { 150, 140, 124 })
-                end
+            -- 圆心到矩形最近距离
+            local nx = math.max(r.x, math.min(lx, r.x + r.w))
+            local ny = math.max(r.y, math.min(ly, r.y + r.h))
+            local dx, dy = lx - nx, ly - ny
+            if dx * dx + dy * dy <= radius * radius then
+                local inside = (lx >= r.x and lx <= r.x + r.w and ly >= r.y and ly <= r.y + r.h)
+                local e = scratch_.erase[i] or 0
+                local ne = math.min(1, e + (inside and 0.62 or 0.24) * speed)
+                scratch_.erase[i] = ne
                 changed = true
+                if ne >= 1 then
+                    scratch_.revealed[i] = true
+                    scratch_.revealedCount = scratch_.revealedCount + 1
+                    local c = scratch_.result.cells[i]
+                    local cx, cy = r.x + r.w / 2, r.y + r.h / 2
+                    if c.hit then
+                        local big = c.mult >= 10
+                        spawnParticles(cx, cy, big and 110 or 24, big)
+                        if big then flashAlpha_ = math.max(flashAlpha_ or 0, 0.75) end
+                        addFloat(cx, cy - r.h * 0.2, "+" .. fmtShort(c.amount),
+                            big and { 255, 226, 120 } or { 255, 210, 130 })
+                        scratch_.hitFlash = math.min(1.0, (scratch_.hitFlash or 0) + (big and 0.6 or 0.22))
+                        SFX("tick", big and 0.62 or 0.42, 1.0 + (i % 5) * 0.03)
+                    else
+                        addFloat(cx, cy - r.h * 0.2, "没中", { 150, 140, 124 })
+                        SFX("tick", 0.20, 0.90)
+                    end
+                end
             end
         end
     end
@@ -1190,10 +1364,12 @@ end
 
 function HandleTouchBegin(eventType, eventData)
     if adCtx_ then return end
-    if state_.screen ~= "scratch" or scratch_.settled then return end
     local lx, ly = toLogical(eventData:GetInt("X")), toLogical(eventData:GetInt("Y"))
+    touchStart_ = { x = lx, y = ly, t = os.clock() }
+    if state_.screen ~= "scratch" or scratch_.settled then return end
     scratch_.pointerDown = true
     scratch_.lastX, scratch_.lastY = lx, ly
+    ScratchSound(true)
     scratchAt(lx, ly)
 end
 
@@ -1203,7 +1379,7 @@ function HandleTouchMove(eventType, eventData)
     local lx, ly = toLogical(eventData:GetInt("X")), toLogical(eventData:GetInt("Y"))
     local dx, dy = lx - scratch_.lastX, ly - scratch_.lastY
     local dist = math.sqrt(dx * dx + dy * dy)
-    local steps = math.max(1, math.floor(dist / (ECO.brushRadius * 0.5)))
+    local steps = math.max(1, math.floor(dist / ((knifeData().radius or ECO.brushRadius) * 0.5)))
     for i = 1, steps do
         local t = i / steps
         scratchAt(scratch_.lastX + dx * t, scratch_.lastY + dy * t)
@@ -1213,31 +1389,96 @@ end
 
 function HandleTouchEnd(eventType, eventData)
     scratch_.pointerDown = false
+    ScratchSound(false)
+    -- 轻点（几乎没移动）→ 按钮点击音
+    if touchStart_ then
+        local lx, ly = toLogical(eventData:GetInt("X")), toLogical(eventData:GetInt("Y"))
+        local dx, dy = lx - touchStart_.x, ly - touchStart_.y
+        if dx * dx + dy * dy < 100 and (os.clock() - touchStart_.t) < 0.6 then
+            if state_.screen ~= "scratch" or scratch_.settled then SFX("click", 0.5) end
+        end
+        touchStart_ = nil
+    end
 end
 
 -- ============================================================================
--- 8. 蒙版 / 转盘渲染
+-- 8. 蒙版 / 转盘 / 氛围渲染
 -- ============================================================================
+
+--- 大厅氛围：顶部暖光 + 灯串 + 暗角（画在 UI 之上，只用极低透明度，不挡操作）
+function DrawLobbyAmbience(nvg)
+    local W, H = UI.GetWidth(), UI.GetHeight()
+    local t = os.clock()
+    -- 顶部暖光（多层圆模拟径向渐变）
+    for k = 1, 7 do
+        nvgBeginPath(nvg)
+        nvgCircle(nvg, W * 0.5, -60, 70 + k * 52)
+        nvgFillColor(nvg, nvgRGBA(255, 198, 118, math.floor(9 - k)))
+        nvgFill(nvg)
+    end
+    -- 灯串：五盏，轻微摆动
+    for i = 0, 4 do
+        local x = W * (0.10 + i * 0.20)
+        local y = 30 + math.sin(t * 1.1 + i * 0.9) * 2.4
+        for k = 3, 1, -1 do
+            nvgBeginPath(nvg)
+            nvgCircle(nvg, x, y, 3.5 * k + 3)
+            nvgFillColor(nvg, nvgRGBA(255, 188, 108, 7))
+            nvgFill(nvg)
+        end
+        nvgBeginPath(nvg)
+        nvgCircle(nvg, x, y, 3.2)
+        nvgFillColor(nvg, nvgRGBA(255, 226, 172, 216))
+        nvgFill(nvg)
+    end
+    -- 左右暗角，压出纵深
+    for i = 1, 5 do
+        local w = 8 + i * 9
+        nvgBeginPath(nvg)
+        nvgRect(nvg, 0, 0, w, H)
+        nvgFillColor(nvg, nvgRGBA(0, 0, 0, 9))
+        nvgFill(nvg)
+        nvgBeginPath(nvg)
+        nvgRect(nvg, W - w, 0, w, H)
+        nvgFillColor(nvg, nvgRGBA(0, 0, 0, 9))
+        nvgFill(nvg)
+    end
+end
 
 function DrawFoil(nvg)
     for i = 1, scratch_.total do
         if not scratch_.revealed[i] then
             local r = scratch_.cellRects[i]
-            -- 银灰底
-            nvgBeginPath(nvg)
-            nvgRoundedRect(nvg, r.x, r.y, r.w, r.h, 3)
-            nvgFillColor(nvg, nvgRGBA(176, 182, 194, 255))
-            nvgFill(nvg)
-            -- 上半道高光，模拟拉丝反光
-            nvgBeginPath(nvg)
-            nvgRoundedRect(nvg, r.x + 1, r.y + 1, r.w - 2, r.h * 0.42, 2)
-            nvgFillColor(nvg, nvgRGBA(206, 212, 224, 105))
-            nvgFill(nvg)
-            -- 右下暗边
-            nvgBeginPath(nvg)
-            nvgRect(nvg, r.x + 1, r.y + r.h - 2, r.w - 2, 1)
-            nvgFillColor(nvg, nvgRGBA(140, 146, 158, 110))
-            nvgFill(nvg)
+            local e = (scratch_.erase and scratch_.erase[i]) or 0
+            local a = math.floor(255 * (1 - e * 0.88))
+            if a > 6 then
+                -- 银灰底
+                nvgBeginPath(nvg)
+                nvgRoundedRect(nvg, r.x, r.y, r.w, r.h, 3)
+                nvgFillColor(nvg, nvgRGBA(176, 182, 194, a))
+                nvgFill(nvg)
+                -- 上半道高光，模拟拉丝反光
+                nvgBeginPath(nvg)
+                nvgRoundedRect(nvg, r.x + 1, r.y + 1, r.w - 2, r.h * 0.42, 2)
+                nvgFillColor(nvg, nvgRGBA(206, 212, 224, math.floor(a * 0.41)))
+                nvgFill(nvg)
+                -- 右下暗边
+                nvgBeginPath(nvg)
+                nvgRect(nvg, r.x + 1, r.y + r.h - 2, r.w - 2, 1)
+                nvgFillColor(nvg, nvgRGBA(140, 146, 158, math.floor(a * 0.43)))
+                nvgFill(nvg)
+                -- 擦到一半：边缘留碎屑，像被磨下来的一层
+                if e > 0.1 then
+                    for k = 1, 3 do
+                        local px = r.x + ((i * 37 + k * 61) % 100) / 100 * r.w
+                        local py = r.y + ((i * 53 + k * 29) % 100) / 100 * r.h
+                        nvgBeginPath(nvg)
+                        nvgCircle(nvg, px, py, 1.2 + (k % 2) * 0.9)
+                        nvgFillColor(nvg, nvgRGBA(214, 220, 232, math.floor(a * 0.55)))
+                        nvgFill(nvg)
+                    end
+                end
+            end
         end
     end
 end
@@ -1362,8 +1603,7 @@ function updateHud()
     updateCurrencyBar()
     if not uiRoot_ then return end
     local stat = uiRoot_:FindById("statLabel") --[[@as Label?]]
-    if stat then stat:SetText("已刮 " .. state_.totalScratched .. " 张 · 累计 " .. fmt(state_.totalWon)
-        .. " 币 · 产出 " .. totalProduction() .. "/秒") end
+    if stat then stat:SetText("已刮 " .. state_.totalScratched .. " 张 · " .. shopData().name) end
 
     local a1 = uiRoot_:FindById("a1Btn") --[[@as Button?]]
     if a1 and state_.ads then
@@ -1374,18 +1614,26 @@ function updateHud()
     local g, v = state_.luckGauge or 0, state_.vouchers or 0
     local lt = uiRoot_:FindById("luckText") --[[@as Label?]]
     if lt then
-        if v >= VOUCHER_MAX then
-            lt:SetText("运势券已满 " .. v .. "/" .. VOUCHER_MAX .. " · 先用掉一张")
+        if v >= voucherMax() then
+            lt:SetText("运势券已满 " .. v .. "/" .. voucherMax() .. " · 先用掉一张")
         elseif g >= LUCK_CAP then
             lt:SetText("手气槽已满 · 下一张出券")
         else
-            lt:SetText("手气槽 " .. g .. "/" .. LUCK_CAP .. " · 再 " .. math.ceil((LUCK_CAP - g) / LUCK_GAIN) .. " 张有券")
+            lt:SetText("手气槽 " .. g .. "/" .. LUCK_CAP .. " · 再 "
+                .. math.ceil((LUCK_CAP - g) / math.max(1, LUCK_GAIN + (shopData().luckAdd or 0) + staffLuckBonus()))
+                .. " 张有券")
         end
     end
     local lv = uiRoot_:FindById("luckVoucher") --[[@as Label?]]
-    if lv then lv:SetText("券 " .. v .. "/" .. VOUCHER_MAX); lv:SetFontColor(v > 0 and C.goldL or C.dim) end
+    if lv then lv:SetText("券 " .. v .. "/" .. voucherMax()); lv:SetFontColor(v > 0 and C.goldL or C.dim) end
     local lb = uiRoot_:FindById("luckBar")
     if lb then lb:SetWidth(math.max(4, math.floor((UI.GetWidth() - 48) * g / LUCK_CAP))) end
+
+    -- 金币入口（大厅店铺条 / 店铺页顶栏）
+    local lc = uiRoot_:FindById("lobbyCoins") --[[@as Label?]]
+    if lc then lc:SetText("金币 " .. fmtShort(state_.coins)) end
+    local sc = uiRoot_:FindById("shopCoinLabel") --[[@as Label?]]
+    if sc then sc:SetText("金币 " .. fmt(state_.coins)) end
 
     -- 票架各档状态（解锁数会随刮卡数变化）
     local unlockedN = 0
@@ -1434,13 +1682,13 @@ local function rollCandidates(tier, useVoucher)
     for _, styleIdx in ipairs(order) do
         local tk = pool[math.floor(rng() * #pool) + 1]
         -- 券只对一张票生效（第一张），其余按普通生成——避免券价值被三选一稀释
-        local res = generateTicket(tk, styleIdx, false, PEEK_CELLS)
+        local res = generateTicket(tk, styleIdx, false, PEEK_CELLS + (shopData().peek or 0))
         cands[#cands + 1] = { tk = tk, styleIdx = styleIdx, result = res }
     end
     if useVoucher then
         -- 券：重掷第一张为「有保底」的票
         local tk = pool[math.floor(rng() * #pool) + 1]
-        local res = generateTicket(tk, cands[1].styleIdx, true, PEEK_CELLS)
+        local res = generateTicket(tk, cands[1].styleIdx, true, PEEK_CELLS + (shopData().peek or 0))
         cands[1] = { tk = tk, styleIdx = cands[1].styleIdx, result = res, vouched = true }
     end
     return cands
@@ -1556,7 +1804,7 @@ function BuildCounter(tier)
                     onClick = function() peekState_.cands = {}; BuildLobby() end },
                 UI.Panel { alignItems = "flex-end", gap = 2, children = {
                     UI.Label { text = tier .. " 元档 · 柜台", fontSize = 16, fontColor = C.goldL },
-                    UI.Label { text = "三张票 · 同价 " .. fmt(price) .. " 币 · 各已揭开 " .. PEEK_CELLS .. " 格",
+                    UI.Label { text = "三张票 · 同价 " .. fmt(price) .. " 币 · 各已揭开 " .. (PEEK_CELLS + (shopData().peek or 0)) .. " 格",
                         fontSize = 10, fontColor = C.dim },
                 }},
             }},
@@ -1594,8 +1842,8 @@ function luckPanel()
     local g = state_.luckGauge or 0
     local v = state_.vouchers or 0
     local txt
-    if v >= VOUCHER_MAX then
-        txt = "运势券已满 " .. v .. "/" .. VOUCHER_MAX .. " · 先用掉一张再攒"
+    if v >= voucherMax() then
+        txt = "运势券已满 " .. v .. "/" .. voucherMax() .. " · 先用掉一张再攒"
     elseif g >= LUCK_CAP then
         txt = "手气槽已满 · 下一张出券"
     else
@@ -1609,7 +1857,7 @@ function luckPanel()
             UI.Panel { width = "100%", flexDirection = "row",
                 justifyContent = "space-between", alignItems = "center", children = {
                 UI.Label { id = "luckText", text = txt, fontSize = 11, fontColor = { 236, 206, 236, 255 } },
-                UI.Label { id = "luckVoucher", text = "券 " .. v .. "/" .. VOUCHER_MAX, fontSize = 11,
+                UI.Label { id = "luckVoucher", text = "券 " .. v .. "/" .. voucherMax(), fontSize = 11,
                     fontColor = v > 0 and C.goldL or C.dim },
             }},
             UI.Panel { width = "100%", height = 6, backgroundColor = { 28, 22, 28, 255 },
@@ -1658,6 +1906,8 @@ function BuildLobby()
     local topPad = math.floor(UI.GetHeight() * 0.105)
 
     -- 票架：5 个档位，全部可见（看得见买不起 = 最便宜的长线钩子，GDD 5.8）
+    local shopNow = shopData()
+    local shopNext = SHOP_LEVELS[shopNow.lv + 1]
     local tierBtns = {}
     for _, tier in ipairs(tiersList()) do
         local pool = tierTickets(tier)
@@ -1712,6 +1962,55 @@ function BuildLobby()
             UI.Panel {
                 width = "100%", paddingLeft = 14, paddingRight = 14, gap = 8,
                 children = {
+                    -- 店铺入口（金币出口 · 长期目标）
+                    UI.Panel { width="100%", padding=11, flexDirection="row",
+                        justifyContent="space-between", alignItems="center",
+                        backgroundColor = { 48, 38, 24, 255 }, borderRadius=12,
+                        borderWidth=1, borderColor={ 128, 96, 48, 255 },
+                        onClick = function() BuildShop() end,
+                        children = {
+                            UI.Panel { gap=2, children = {
+                                UI.Label { text="店铺 · " .. shopNow.name, fontSize=13, fontColor=C.goldL },
+                                UI.Label { text = shopNext
+                                        and ("下一级 " .. shopNext.name .. " · " .. fmtShort(shopNext.cost) .. " 币")
+                                        or "已是最亮的招牌", fontSize=9, fontColor=C.dim },
+                            }},
+                            UI.Panel { alignItems="flex-end", gap=1, children = {
+                                UI.Label { id="lobbyCoins", text="金币 " .. fmtShort(state_.coins),
+                                    fontSize=12, fontColor=C.gold },
+                                UI.Label { text="进去看看 ›", fontSize=10, fontColor={206,174,110,255} },
+                            }},
+                        }},
+                    -- 今日免费票（店铺等级加成 · 每日一次）
+                    (function()
+                        local freeN = 1 + shopNow.freeTicket
+                        local claimed = state_.freeTicketDay == todayIndex()
+                        if claimed then
+                            return UI.Panel { width="100%", padding=8, flexDirection="row",
+                                justifyContent="space-between", alignItems="center",
+                                backgroundColor={30,28,24,255}, borderRadius=9,
+                                children={
+                                    UI.Label { text="今日免费票已领 · 明天再来", fontSize=10, fontColor={120,112,98,235} },
+                                    UI.Label { text="店铺 Lv." .. shopNow.lv, fontSize=9, fontColor={132,120,98,225} },
+                                }}
+                        end
+                        return UI.Panel { width="100%", padding=9, flexDirection="row",
+                            justifyContent="space-between", alignItems="center",
+                            backgroundColor={54,44,22,255}, borderRadius=9,
+                            borderWidth=1, borderColor={196,154,68,255},
+                            onClick=function()
+                                if state_.freeTicketDay == todayIndex() then return end
+                                state_.freeTicketDay = todayIndex()
+                                state_.tickets = state_.tickets + freeN
+                                saveGame(); BuildLobby()
+                                SFX("buy", 0.7)
+                                ShowToast("领到今日免费票 ×" .. freeN)
+                            end,
+                            children={
+                                UI.Label { text="今日免费票 ×" .. freeN, fontSize=11, fontColor=C.goldL },
+                                UI.Label { text="点这里领 ›", fontSize=10, fontColor={236,200,120,255} },
+                            }}
+                    end)(),
                     luckPanel(),
                     UI.Label { id = "ticketTimer", text = "", fontSize = 9,
                         fontColor = { 138, 124, 98, 235 } },
@@ -1775,6 +2074,227 @@ function BuildLobby()
     if not state_.seenTutorial then ShowTutorial() end
 end
 
+-- ============================================================================
+-- 7.5 店铺（金币主出口）
+-- ============================================================================
+
+local SHOP_PAL = {
+    { wall={96,76,52},  roof={56,42,30},  sign={152,112,58},  lamp={255,196,110} },
+    { wall={118,94,62}, roof={68,50,32},  sign={182,138,72},  lamp={255,214,128} },
+    { wall={136,106,70},roof={60,56,52},  sign={200,152,80},  lamp={255,222,146} },
+    { wall={156,120,80},roof={52,50,54},  sign={218,170,90},  lamp={255,230,168} },
+    { wall={178,136,88},roof={46,44,48},  sign={236,190,102}, lamp={255,238,188} },
+    { wall={204,158,98},roof={38,36,42},  sign={255,216,122}, lamp={255,248,212} },
+}
+
+--- 店铺外观：完全用 Panel 拼，等级越高层数越多、灯越亮
+local function shopFacade(sd)
+    local pal = SHOP_PAL[sd.lv] or SHOP_PAL[1]
+    local kids = {}
+    -- 夜空底
+    kids[#kids+1] = UI.Panel { position="absolute", left=0, right=0, top=0, bottom=0,
+        backgroundColor = { 16, 18, 30, 255 }, borderRadius = 12 }
+    -- 远处灯笼（3 级起）
+    if sd.lv >= 2 then
+        for i = 1, math.min(6, sd.lv + 1) do
+            kids[#kids+1] = UI.Panel { position="absolute", top=8 + (i % 2) * 5,
+                left = (8 + i * 14) .. "%", width=8, height=8, borderRadius=4,
+                backgroundColor = { pal.lamp[1], pal.lamp[2], pal.lamp[3], 190 } }
+        end
+    end
+    -- 地面
+    kids[#kids+1] = UI.Panel { position="absolute", left=0, right=0, bottom=0, height=26,
+        backgroundColor = { 30, 27, 24, 255 }, borderTopWidth=1, borderColor={64,54,42,255} }
+    -- 建筑主体
+    local bh = 92 + sd.lv * 8
+    kids[#kids+1] = UI.Panel { position="absolute", bottom=26, left="15%", width="70%", height=bh,
+        backgroundColor = { pal.wall[1], pal.wall[2], pal.wall[3], 255 },
+        borderWidth=1, borderColor={ pal.roof[1], pal.roof[2], pal.roof[3], 255 } }
+    -- 屋顶压条
+    kids[#kids+1] = UI.Panel { position="absolute", bottom=26+bh-6, left="13%", width="74%", height=10,
+        backgroundColor = { pal.roof[1], pal.roof[2], pal.roof[3], 255 }, borderRadius=2 }
+    -- 招牌
+    kids[#kids+1] = UI.Panel { position="absolute", bottom=26+bh-26, left="24%", width="52%", height=22,
+        backgroundColor = { pal.sign[1], pal.sign[2], pal.sign[3], 255 }, borderRadius=4,
+        justifyContent="center", alignItems="center",
+        children = { UI.Label { text="好 运 杂 货", fontSize=10, fontColor={38,26,12,255} } } }
+    -- 二楼窗（4 级起）
+    if sd.lv >= 4 then
+        kids[#kids+1] = UI.Panel { position="absolute", bottom=26+bh-62, left="28%", width="18%", height=18,
+            backgroundColor={ pal.lamp[1], pal.lamp[2], pal.lamp[3], 210 }, borderRadius=2 }
+        kids[#kids+1] = UI.Panel { position="absolute", bottom=26+bh-62, left="54%", width="18%", height=18,
+            backgroundColor={ pal.lamp[1], pal.lamp[2], pal.lamp[3], 210 }, borderRadius=2 }
+    end
+    -- 门（暖光）
+    kids[#kids+1] = UI.Panel { position="absolute", bottom=26, left="40%", width="20%", height=bh*0.46,
+        backgroundColor = { pal.lamp[1], pal.lamp[2], pal.lamp[3], 220 },
+        borderTopLeftRadius=20, borderTopRightRadius=20 }
+    -- 门口台阶
+    kids[#kids+1] = UI.Panel { position="absolute", bottom=26, left="36%", width="28%", height=5,
+        backgroundColor={ pal.roof[1], pal.roof[2], pal.roof[3], 255 } }
+    -- 雨棚（2 级起，条纹）
+    if sd.lv >= 3 then
+        for i = 0, 5 do
+            kids[#kids+1] = UI.Panel { position="absolute", bottom=26+bh*0.5, left=(17 + i*11) .. "%",
+                width="11%", height=9,
+                backgroundColor = i % 2 == 0 and { 178, 62, 52, 255 } or { 226, 214, 190, 255 } }
+        end
+    end
+    return UI.Panel { width="100%", height=186, borderRadius=12,
+        overflow="hidden", children = kids }
+end
+
+function BuildShop()
+    state_.screen = "shop"
+    local sd = shopData()
+    local nxt = SHOP_LEVELS[sd.lv + 1]
+    local canLv = nxt and state_.coins >= nxt.cost
+
+    -- 店铺效果一行摘要
+    local function effLine(s)
+        return "打烊 ×" .. string.format("%.1f", s.offlineMul)
+            .. (s.peek > 0 and ("  ·  预揭 +" .. s.peek .. " 格") or "")
+            .. (s.freeTicket > 0 and ("  ·  日赠 " .. s.freeTicket .. " 张") or "")
+            .. (s.luckAdd > 0 and ("  ·  手气 +" .. s.luckAdd) or "")
+            .. (s.voucherMax > 0 and ("  ·  券上限 +" .. s.voucherMax) or "")
+    end
+
+    -- 刮刀横排
+    local knifeCards = {}
+    for _, k in ipairs(KNIVES) do
+        local owned = state_.ownedKnives and state_.ownedKnives[k.id]
+        local equipped = state_.knife == k.id
+        local affordable = state_.coins >= k.cost
+        knifeCards[#knifeCards + 1] = UI.Panel {
+            width = "18.4%", padding = 5, gap = 3, alignItems = "center",
+            backgroundColor = equipped and { 74, 60, 26, 255 } or { 34, 32, 38, 255 },
+            borderRadius = 8, borderWidth = equipped and 2 or 1,
+            borderColor = equipped and C.gold or (owned and { 90, 84, 76, 255 } or { 58, 54, 50, 255 }),
+            children = {
+                -- 刀身小图
+                UI.Panel { width = 26, height = 30, borderRadius = 3,
+                    backgroundColor = { k.tint[1], k.tint[2], k.tint[3], 255 },
+                    borderWidth = 1, borderColor = { 20, 20, 20, 160 } },
+                UI.Label { text = k.name, fontSize = 8,
+                    fontColor = equipped and C.goldL or (owned and { 210, 205, 196, 255 } or { 132, 126, 116, 255 }) },
+                UI.Label { text = "R" .. k.radius, fontSize = 7, fontColor = { 130, 126, 118, 230 } },
+                UI.Button {
+                    text = equipped and "使用中" or (owned and "换上" or fmtShort(k.cost)),
+                    width = "100%", height = 22, fontSize = 8,
+                    disabled = equipped or (not owned and not affordable),
+                    backgroundColor = equipped and { 88, 72, 30, 255 }
+                        or (owned and { 56, 78, 60, 255 } or { 52, 46, 38, 255 }),
+                    textColor = equipped and C.gold or { 226, 220, 208, 255 },
+                    borderRadius = 5,
+                    onClick = function()
+                        if owned then
+                            state_.knife = k.id
+                            saveGame()
+                            BuildShop()
+                            ShowToast("换上了「" .. k.name .. "」· 刮擦半径 " .. k.radius)
+                        elseif state_.coins >= k.cost then
+                            state_.coins = state_.coins - k.cost
+                            state_.ownedKnives[k.id] = true
+                            state_.knife = k.id
+                            saveGame()
+                            BuildShop()
+                            ShowToast("买下「" .. k.name .. "」· 刮得更快了")
+                        else
+                            ShowToast("金币不够 · 还差 " .. fmt(k.cost - state_.coins))
+                        end
+                    end,
+                },
+            },
+        }
+    end
+
+    local kids = {
+        -- 顶栏
+        UI.Panel { width="100%", paddingTop=math.floor(UI.GetHeight()*0.105), paddingBottom=6,
+            paddingLeft=16, paddingRight=16, flexDirection="row",
+            justifyContent="space-between", alignItems="center", children = {
+            UI.Button { text="←", width=40, height=36, fontSize=16,
+                backgroundColor={40,36,32,255}, textColor=C.text, borderRadius=8,
+                onClick = function() BuildLobby() end },
+            UI.Label { text="店铺", fontSize=17, fontColor=C.text },
+            UI.Label { id="shopCoinLabel", text="金币 " .. fmt(state_.coins), fontSize=13, fontColor=C.gold },
+        }},
+        UI.ScrollView { flexGrow=1, flexBasis=0, scrollY=true, width="100%",
+            showScrollbar=true,
+            children = { UI.Panel { width="100%", paddingLeft=14, paddingRight=14, paddingBottom=24, gap=10, children = {
+                -- 店铺外观 + 名字
+                UI.Panel { width="100%", gap=6, children = {
+                    shopFacade(sd),
+                    UI.Panel { width="100%", flexDirection="row", justifyContent="space-between",
+                        alignItems="flex-end", children = {
+                        UI.Panel { gap=2, children = {
+                            UI.Label { text="Lv." .. sd.lv .. "  " .. sd.name, fontSize=16, fontColor=C.goldL },
+                            UI.Label { text=sd.desc, fontSize=10, fontColor=C.dim },
+                        }},
+                        UI.Label { text=effLine(sd), fontSize=9, fontColor={180,164,130,235} },
+                    }},
+                }},
+                -- 升级卡
+                nxt and UI.Panel { width="100%", padding=12, gap=7,
+                    backgroundColor = canLv and { 56, 44, 20, 255 } or { 36, 33, 28, 255 },
+                    borderRadius=12, borderWidth=1,
+                    borderColor = canLv and C.gold or { 76, 68, 56, 255 },
+                    children = {
+                        UI.Panel { width="100%", flexDirection="row", justifyContent="space-between",
+                            alignItems="center", children = {
+                            UI.Label { text="升级到「" .. nxt.name .. "」", fontSize=13,
+                                fontColor = canLv and C.goldL or C.text },
+                            UI.Label { text=fmt(nxt.cost) .. " 币", fontSize=12,
+                                fontColor = canLv and C.gold or { 150, 138, 118, 255 } },
+                        }},
+                        UI.Label { text=nxt.desc, fontSize=10, fontColor={176,162,138,235} },
+                        UI.Label { text="升级后：" .. effLine(nxt), fontSize=9.5,
+                            fontColor={200,182,142,245} },
+                        UI.Button {
+                            text = canLv and "升级" or ("还差 " .. fmt(nxt.cost - state_.coins)),
+                            width="100%", height=40, fontSize=13,
+                            disabled = not canLv,
+                            backgroundColor = canLv and { 122, 92, 34, 255 } or { 44, 40, 34, 255 },
+                            textColor = canLv and { 255, 236, 186, 255 } or { 118, 110, 98, 255 },
+                            borderRadius=9, borderWidth=1,
+                            borderColor = canLv and C.gold or { 62, 56, 48, 255 },
+                            onClick = function()
+                                local cost = nxt.cost
+                                if state_.coins >= cost then
+                                    state_.coins = state_.coins - cost
+                                    state_.shopLv = sd.lv + 1
+                                    saveGame()
+                                    BuildShop()
+                                    ShowToast("店铺升级 · " .. SHOP_LEVELS[sd.lv + 1].name)
+                                end
+                            end,
+                        },
+                    }} or UI.Panel { width="100%", padding=12, alignItems="center",
+                        backgroundColor={ 56, 44, 20, 255 }, borderRadius=12,
+                        borderWidth=1, borderColor=C.gold,
+                        children = { UI.Label { text="已经是顶配店铺 · 这条街没有比你更亮的招牌了",
+                            fontSize=11, fontColor=C.goldL } } },
+                -- 刮刀
+                UI.Panel { width="100%", padding=10, gap=8,
+                    backgroundColor={32,30,34,255}, borderRadius=12,
+                    borderWidth=1, borderColor={70,64,56,255}, children = {
+                    UI.Panel { width="100%", flexDirection="row", justifyContent="space-between",
+                        alignItems="center", children = {
+                        UI.Label { text="刮刀", fontSize=13, fontColor=C.text },
+                        UI.Label { text="半径越大 · 一刀划开越多格", fontSize=9, fontColor=C.dim },
+                    }},
+                    UI.Panel { width="100%", flexDirection="row", justifyContent="space-between",
+                        children = knifeCards },
+                }},
+                UI.Label { text="金币的用处只有两个：升级店铺、换更好的刮刀。都花完，才叫本事。",
+                    fontSize=9, fontColor={132,124,110,225}, textAlign="center" },
+                }}}},
+    }
+
+    uiRoot_ = UI.Panel { width="100%", height="100%", backgroundColor=C.bg, children = kids }
+    UI.SetRoot(uiRoot_)
+end
+
 --- 新手引导 / 玩法说明
 function ShowTutorial()
     if not uiRoot_ or uiRoot_:FindById("tutOverlay") then return end
@@ -1816,12 +2336,14 @@ end
 local function enterTicket(price, name)
     if state_.tickets >= 1 then
         state_.tickets = state_.tickets - 1
+        SFX("buy", 0.6)
         return true
     end
     if state_.coins >= price then
         state_.coins = state_.coins - price
         saveGame()
         ShowToast("已花 " .. fmt(price) .. " 金币买票")
+        SFX("buy", 0.7)
         return true
     end
     ShowToast("票和金币都不够 · 先转个盘或看广告")
@@ -1832,10 +2354,10 @@ end
 --- @param prebuilt table|nil 柜台里已生成好的结果（含预揭格），选中后直接使用，保证预揭与实际一致
 function StartTicket(tk, styleIdx, prebuilt)
     if not enterTicket(tk.price, tk.name) then return false end
-    local res = prebuilt or generateTicket(tk, styleIdx or 2, false, PEEK_CELLS)
+    local res = prebuilt or generateTicket(tk, styleIdx or 2, false, PEEK_CELLS + (shopData().peek or 0))
     scratch_ = {
         mode = "multi", result = res,
-        zones = {}, cellRects = {}, revealed = {}, revealedCount = 0,
+        zones = {}, cellRects = {}, revealed = {}, erase = {}, revealedCount = 0,
         total = 0, foil = {}, barW = 240,
         pointerDown = false, lastX = 0, lastY = 0,
         settled = false, settleDelay = 0, lastTouch = 0, hitFlash = 0,
@@ -1986,6 +2508,11 @@ function buildMultiScreen()
         })
     end
 
+    -- 票据流水号（用票 id 稳定生成，同一款票每次都是同一个前缀，像真的印刷批次）
+    local hseed = 0
+    for i = 1, #tk.id do hseed = (hseed * 31 + tk.id:byte(i)) % 1000000 end
+    local serial = string.format("NO.%03d%03d", hseed, (cur.total * 137 + tk.yuan * 7) % 1000)
+
     -- 票头：左票名 / 右幸运号
     local topRow = UI.Panel {
         position = "absolute", left = cardX + 14, top = cardY + 8,
@@ -1998,13 +2525,25 @@ function buildMultiScreen()
                 children = {
                     UI.Label { text = tk.name .. " · " .. tk.yuan .. " 元", fontSize = 16,
                         fontColor = { skin.ink[1], skin.ink[2], skin.ink[3], 255 } },
-                    UI.Label { text = "共 " .. cur.total .. " 次中奖机会", fontSize = 9,
-                        fontColor = { skin.frame[1], skin.frame[2], skin.frame[3], 210 } },
+                    UI.Label { text = "共 " .. cur.total .. " 次机会 · " .. serial, fontSize = 8.5,
+                        fontColor = { skin.frame[1], skin.frame[2], skin.frame[3], 200 } },
                 },
             },
             UI.Panel { flexDirection = "row", alignItems = "center", gap = 4, children = headKids },
         },
     }
+
+    -- 纸纹：七道极淡横线，让票面不像纯色块
+    local paperLines = {}
+    for k = 1, 7 do
+        paperLines[#paperLines + 1] = UI.Panel {
+            position = "absolute", left = cardX + 10,
+            top = math.floor(cardY + 58 + k * ((cardH - 70) / 8)),
+            width = cardW - 20, height = 1,
+            backgroundColor = { skin.ink[1], skin.ink[2], skin.ink[3], 11 },
+            pointerEvents = "none",
+        }
+    end
 
     uiRoot_ = UI.Panel {
         width = "100%", height = "100%", backgroundColor = C.bg,
@@ -2037,6 +2576,8 @@ function buildMultiScreen()
             },
             topRow,
             UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
+                pointerEvents = "none", children = paperLines },
+            UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
                 pointerEvents = "none", children = titles },
             UI.Panel { position = "absolute", left = 0, top = 0, width = W, height = H,
                 pointerEvents = "none", children = widgets },
@@ -2063,7 +2604,11 @@ end
 function RevealAll()
     if scratch_.settled or state_.screen ~= "scratch" then return end
     scratch_.settled = true
-    for i = 1, scratch_.total do scratch_.revealed[i] = true end
+    ScratchSound(false)
+    for i = 1, scratch_.total do
+        scratch_.revealed[i] = true
+        scratch_.erase[i] = 1
+    end
     scratch_.revealedCount = scratch_.total
     updateScratchProgress()
     scratch_.settleDelay = 0.65   -- 让玩家先看清整张票
@@ -2075,14 +2620,16 @@ function SettleScratch()
     local payout = cur.payout
     state_.totalScratched = state_.totalScratched + 1
 
-    -- 手气槽：每张固定 +4（不看广告、不看结果，无套利空间，GDD 6.1）
+    -- 手气槽：每张固定基础 +4，另加店铺与店员加成（不看广告、不看结果，无套利空间）
+    local luckGain = LUCK_GAIN + (shopData().luckAdd or 0) + staffLuckBonus()
     local gaugeMsg = nil
-    state_.luckGauge = (state_.luckGauge or 0) + LUCK_GAIN
+    state_.luckGauge = (state_.luckGauge or 0) + luckGain
     if state_.luckGauge >= LUCK_CAP then
-        if (state_.vouchers or 0) < VOUCHER_MAX then
+        if (state_.vouchers or 0) < voucherMax() then
             state_.vouchers = (state_.vouchers or 0) + 1
             state_.luckGauge = 0
             gaugeMsg = "手气槽满 · 得 1 张运势券"
+            SFX("voucher", 0.8)
         else
             state_.luckGauge = LUCK_CAP
             gaugeMsg = "运势券已满 · 先用掉一张再攒"
@@ -2095,6 +2642,9 @@ function SettleScratch()
         local bigHit = payout >= tk.price * 8
         spawnParticles(UI.GetWidth() / 2, UI.GetHeight() * 0.42, bigHit and 240 or 70, bigHit)
         if bigHit then flashAlpha_ = 1.0 end
+        SFX(bigHit and "bigwin" or "win", bigHit and 0.9 or 0.7)
+    else
+        SFX("lose", 0.55)
     end
 
     local hitOnes = {}
@@ -2120,8 +2670,8 @@ function SettleScratch()
     -- 手气槽进度（确定性承诺：永远知道还差几张）
     local gv = state_.luckGauge or 0
     table.insert(kids, UI.Label {
-        text = gaugeMsg or ("手气槽 " .. gv .. "/" .. LUCK_CAP .. " · 再 "
-            .. math.ceil((LUCK_CAP - gv) / LUCK_GAIN) .. " 张有券"),
+        text = gaugeMsg or ("手气槽 " .. gv .. "/" .. LUCK_CAP .. "（本张 +" .. luckGain .. "）· 再 "
+            .. math.ceil((LUCK_CAP - gv) / math.max(1, luckGain)) .. " 张有券"),
         fontSize = 10, fontColor = gaugeMsg and { 236, 196, 240, 255 } or { 156, 140, 116, 235 },
     })
 
@@ -2458,7 +3008,7 @@ function BuildStaff()
     table.sort(list, function(a, b)
         local oa, ob = order[a.rarity] or 9, order[b.rarity] or 9
         if oa ~= ob then return oa < ob end
-        return staffProduction(a) > staffProduction(b)
+        return staffOneBonus(a) > staffOneBonus(b)
     end)
 
     for _, rec in ipairs(list) do
@@ -2476,7 +3026,7 @@ function BuildStaff()
                         UI.Label { text = cat.name, fontSize = 13, fontColor = { 235, 235, 240, 255 } },
                     }},
                     UI.Panel { width = 90, gap = 1, children = {
-                        UI.Label { text = "Lv." .. rec.level .. " · " .. staffProduction(rec) .. "/秒", fontSize = 12, fontColor = { 200, 200, 210, 255 } },
+                        UI.Label { text = "Lv." .. rec.level .. " · 手气 +" .. staffOneBonus(rec) .. "/张", fontSize = 12, fontColor = { 200, 200, 210, 255 } },
                         UI.Label { text = cat.desc, fontSize = 9, fontColor = { 150, 150, 165, 220 } },
                     }},
                     UI.Button { text = deployText, fontSize = 12, width = 60,
@@ -2518,7 +3068,7 @@ function BuildStaff()
                 children = {
                     UI.Button { text = "←", onClick = function() BuildPhone() end },
                     UI.Label { text = "👷 员工 · 上阵 " .. deployedCount .. "/3", fontSize = 17, fontColor = { 230, 230, 240, 255 } },
-                    UI.Label { text = "产出 " .. totalProduction() .. "/秒", fontSize = 13, fontColor = { 255, 215, 0, 255 } },
+                    UI.Label { text = "手气 +" .. staffLuckBonus() .. "/张", fontSize = 13, fontColor = { 255, 215, 0, 255 } },
                 }
             },
             UI.Panel {
