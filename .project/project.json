@@ -6,7 +6,7 @@
     "id": "local"
   },
   "entry": "main.lua",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "taptap_publish": {
     "app_id": 1032436,
     "developer_id": 523874,
@@ -19,11 +19,11 @@
     "icon_url": "https://img.tapimg.com/market/images/ef4719159691d7db73760cadfc67eac4.png"
   },
   "metadata": {
-    "updated_at": "2026-11-06T18:31:47.656Z"
+    "updated_at": "2026-11-07T00:51:33.976Z"
   },
   "test_qrcode": {
-    "url": "https://tapcode-sce.spark.xd.com/qrcode/m_i91j_1793989907520.png",
-    "generated_at": "2026-11-06T18:31:47.656Z"
+    "url": "https://tapcode-sce.spark.xd.com/qrcode/m_i91j_1794012693876.png",
+    "generated_at": "2026-11-07T00:51:33.976Z"
   },
   "dc_publish_sync": {
     "synced": false,
