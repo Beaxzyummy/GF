@@ -64,3 +64,6 @@ templates/
 tools/
 urhox-libs/
 # <<< TapTap Maker AI dev kit (local only) <<<真机测试二维码.png
+
+# 交付包（不进仓库）
+*.zip
